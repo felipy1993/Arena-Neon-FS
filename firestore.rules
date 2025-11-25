@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // REGRA 1: DADOS DO JOGADOR
+    // Garante que o jogador só pode ler/escrever o PRÓPRIO save.
+    // Ninguém consegue roubar o progresso ou gemas de outro.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // REGRA 2: NOMES DE USUÁRIO
+    // Permite ler a lista de nomes (para o login funcionar).
+    // Permite escrever APENAS se estiver criando a conta agora.
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if request.auth != null;
+    }
+  }
+}
