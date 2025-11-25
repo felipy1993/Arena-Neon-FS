@@ -58,30 +58,41 @@ const App: React.FC = () => {
 
   // --- FIREBASE AUTH LISTENER ---
   useEffect(() => {
-    if (auth) {
+    if (!auth) {
+        console.warn('⚠️ Auth não inicializado, pulando listener');
+        return;
+    }
+    
+    try {
         const unsubscribe = auth.onAuthStateChanged(async (user) => {
-            setCurrentUser(user);
-            if (user) {
-                // If user logs in, try to load data
-                const cloudData = await loadGameFromCloud(user);
-                if (cloudData) {
-                     setTempName(cloudData.playerName);
-                     setHighScore(prev => Math.max(prev, cloudData.highScore));
-                     applyCloudData(cloudData); // Carrega o estado completo (incluindo datas de login)
+            try {
+                setCurrentUser(user);
+                if (user) {
+                    // If user logs in, try to load data
+                    const cloudData = await loadGameFromCloud(user);
+                    if (cloudData) {
+                         setTempName(cloudData.playerName);
+                         setHighScore(prev => Math.max(prev, cloudData.highScore));
+                         applyCloudData(cloudData); // Carrega o estado completo (incluindo datas de login)
+                    } else {
+                        // Novo usuário ou sem save
+                        const fallbackName = user.displayName || user.email?.split('@')[0].toUpperCase() || "OPERADOR";
+                        setTempName(fallbackName);
+                    }
+                    setAuthMode('hidden'); // Vai para o menu "Logado"
                 } else {
-                    // Novo usuário ou sem save
-                    const fallbackName = user.displayName || user.email?.split('@')[0].toUpperCase() || "OPERADOR";
-                    setTempName(fallbackName);
+                    // User logged out
+                    setTempName(''); 
+                    setHighScore(0);
+                    setAuthMode('login'); // Volta para a tela de login
                 }
-                setAuthMode('hidden'); // Vai para o menu "Logado"
-            } else {
-                // User logged out
-                setTempName(''); 
-                setHighScore(0);
-                setAuthMode('login'); // Volta para a tela de login
+            } catch (error) {
+                console.error('❌ Erro no auth state changed:', error);
             }
         });
         return () => unsubscribe();
+    } catch (error) {
+        console.error('❌ Erro ao configurar auth listener:', error);
     }
   }, []);
 
@@ -200,21 +211,26 @@ const App: React.FC = () => {
   };
 
   const applyCloudData = (data: CloudSaveData) => {
-      setPlayerName(data.playerName);
-      setTempName(data.playerName);
-      setHighScore(data.highScore);
-      setUpgrades(data.upgrades);
+      if (!data) {
+          console.error('❌ Dados da nuvem inválidos');
+          return;
+      }
+      
+      setPlayerName(data.playerName || 'JOGADOR');
+      setTempName(data.playerName || 'JOGADOR');
+      setHighScore(data.highScore || 0);
+      setUpgrades(Array.isArray(data.upgrades) ? data.upgrades : INITIAL_UPGRADES);
       setGameState(prev => ({
           ...prev,
-          cash: data.cash,
-          gems: data.gems,
-          wave: data.wave,
-          ownedSkinIds: data.ownedSkinIds,
-          selectedSkinId: data.selectedSkinId,
-          lastLoginDate: data.lastLoginDate,
-          loginStreak: data.loginStreak
+          cash: data.cash || 150,
+          gems: data.gems || 0,
+          wave: data.wave || 1,
+          ownedSkinIds: Array.isArray(data.ownedSkinIds) ? data.ownedSkinIds : ['default'],
+          selectedSkinId: data.selectedSkinId || 'default',
+          lastLoginDate: data.lastLoginDate || '',
+          loginStreak: data.loginStreak || 0
       }));
-      setStats(calculateStats(data.upgrades));
+      setStats(calculateStats(Array.isArray(data.upgrades) ? data.upgrades : INITIAL_UPGRADES));
   };
 
   const calculateStats = (currentUpgrades: Upgrade[], currentHp?: number, currentShield?: number): PlayerStats => {
