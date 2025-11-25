@@ -1,6 +1,5 @@
 
-
-import { initializeApp } from "firebase/app";
+import { initializeApp, FirebaseApp } from "firebase/app";
 import { 
   getAuth, 
   GoogleAuthProvider, 
@@ -8,9 +7,10 @@ import {
   signOut, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword,
-  User 
+  User,
+  Auth
 } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, serverTimestamp, Firestore } from "firebase/firestore";
 import { GameState, Upgrade, Skin } from "./types";
 
 // Configuração do Firebase (Dados Reais do Projeto Arena Neon)
@@ -23,11 +23,22 @@ const firebaseConfig = {
   appId: "1:493945862852:web:bd3ee9cc9ecf503589e791"
 };
 
-// Inicializa o Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const googleProvider = new GoogleAuthProvider();
+// Inicializa o Firebase com tratamento de erros
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let googleProvider: GoogleAuthProvider | null = null;
+
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  googleProvider = new GoogleAuthProvider();
+  console.log('✅ Firebase inicializado com sucesso');
+} catch (error) {
+  console.error('❌ Erro ao inicializar Firebase:', error);
+}
+
 
 // Interfaces de Dados para o Banco
 export interface CloudSaveData {
@@ -68,6 +79,9 @@ export const checkUsernameAvailability = async (username: string): Promise<boole
 
 // 1. Login com Google
 export const loginWithGoogle = async () => {
+    if (!auth || !googleProvider) {
+        throw new Error("Firebase não inicializado");
+    }
     try {
         const result = await signInWithPopup(auth, googleProvider);
         return result.user;
@@ -79,7 +93,7 @@ export const loginWithGoogle = async () => {
 
 // 2. Criar Conta com Email/Senha E NOME DE USUÁRIO
 export const registerWithEmail = async (email: string, pass: string, username: string) => {
-    if (!db) throw new Error("Database not initialized");
+    if (!db || !auth) throw new Error("Firebase não inicializado");
     
     // 1. Verificar disponibilidade do nome
     const isAvailable = await checkUsernameAvailability(username);
@@ -121,6 +135,8 @@ export const registerWithEmail = async (email: string, pass: string, username: s
 
 // 3. Entrar com Email OU Nome de Usuário
 export const loginWithEmailOrUsername = async (identifier: string, pass: string) => {
+    if (!auth) throw new Error("Firebase não inicializado");
+    
     try {
         let emailToUse = identifier;
 
@@ -154,6 +170,7 @@ export const loginWithEmailOrUsername = async (identifier: string, pass: string)
 };
 
 export const logoutUser = async () => {
+    if (!auth) throw new Error("Firebase não inicializado");
     await signOut(auth);
 };
 
