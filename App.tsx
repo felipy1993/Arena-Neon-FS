@@ -1306,8 +1306,12 @@ service cloud.firestore {
                                 {AVAILABLE_SKINS.length} SKINS DISPONÍVEIS | SALDO: {gameState.gems.toLocaleString()} GEMAS
                             </div>
                         </div>
-                        <button onClick={() => { setShowSkinModal(false); setGameState(prev => ({...prev, isPaused: false})); }} className="text-gray-400 hover:text-white">
-                            <X size={24} />
+                        <button 
+                            onClick={() => { setShowSkinModal(false); setGameState(prev => ({...prev, isPaused: false})); }} 
+                            className="text-gray-400 hover:text-white bg-gray-800/50 p-2 rounded-full hover:bg-red-900/50 transition-colors"
+                            title="Fechar Loja"
+                        >
+                            <X size={28} />
                         </button>
                     </div>
                     
@@ -1353,6 +1357,15 @@ service cloud.firestore {
                                 </div>
                             );
                         })}
+                    </div>
+                    
+                    <div className="p-4 border-t border-gray-800 bg-black/50 shrink-0 md:hidden">
+                        <button 
+                            onClick={() => { setShowSkinModal(false); setGameState(prev => ({...prev, isPaused: false})); }}
+                            className="w-full py-3 bg-red-900/30 hover:bg-red-900/50 border border-red-500/30 text-red-400 rounded font-bold uppercase tracking-wider flex items-center justify-center gap-2"
+                        >
+                            <X size={16} /> FECHAR LOJA
+                        </button>
                     </div>
                  </div>
               </div>
