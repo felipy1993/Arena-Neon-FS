@@ -336,13 +336,16 @@ const App: React.FC = () => {
   };
 
   const startGame = () => {
-    if (!currentUser) {
+    // Modo de desenvolvimento: permite jogar sem login
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (!currentUser && !isDev) {
         alert("Erro: Você precisa estar logado para jogar.");
         setAuthMode('login');
         return;
     }
 
-    let nameToUse = tempName.trim() || currentUser.email?.split('@')[0].toUpperCase() || "OPERADOR";
+    let nameToUse = tempName.trim() || (currentUser?.email?.split('@')[0].toUpperCase()) || "JOGADOR";
     setPlayerName(nameToUse);
     
     // --- DAILY REWARD LOGIC ---
@@ -380,13 +383,16 @@ const App: React.FC = () => {
       lastLoginDate: newDate
     }));
 
-    saveGameToCloud(currentUser, {
-        ...gameState, 
-        isGameStarted: true,
-        gems: newTotalGems,
-        loginStreak: currentStreak,
-        lastLoginDate: newDate
-    } as GameState, upgrades, nameToUse, highScore);
+    // Salva apenas se houver usuário logado
+    if (currentUser) {
+        saveGameToCloud(currentUser, {
+            ...gameState, 
+            isGameStarted: true,
+            gems: newTotalGems,
+            loginStreak: currentStreak,
+            lastLoginDate: newDate
+        } as GameState, upgrades, nameToUse, highScore);
+    }
 
     if (showReward) {
         setDailyRewardPopup({ show: true, amount: rewardAmount, streak: currentStreak });
