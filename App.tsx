@@ -417,6 +417,69 @@ const App: React.FC = () => {
       particlesRef.current = [];
   };
 
+  const resetGame = async () => {
+      // Reset all game state to initial values
+      const resetState = {
+          cash: 150,
+          gems: gameState.gems, // Keep gems (premium currency)
+          wave: 1,
+          waveProgress: 0,
+          gameSpeed: 1,
+          isGameOver: false,
+          isPaused: false,
+          score: 0,
+          isGameStarted: false,
+          selectedSkinId: gameState.selectedSkinId, // Keep selected skin
+          ownedSkinIds: gameState.ownedSkinIds, // Keep owned skins
+          lastLoginDate: gameState.lastLoginDate, // Keep login streak
+          loginStreak: gameState.loginStreak
+      };
+      
+      setGameState(prev => ({
+          ...prev,
+          ...resetState
+      }));
+      
+      // Reset upgrades to initial state
+      setUpgrades(INITIAL_UPGRADES);
+      
+      // Recalculate stats with initial upgrades
+      setStats(calculateStats(INITIAL_UPGRADES));
+      
+      // Clear all game entities
+      enemiesRef.current = [];
+      projectilesRef.current = [];
+      textsRef.current = [];
+      particlesRef.current = [];
+      shockwaveRef.current = { active: false, radius: 0, hitIds: new Set() };
+      
+      // Reset timers
+      lastShotTimeRef.current = 0;
+      lastRegenTimeRef.current = 0;
+      waveTimerRef.current = 0;
+      enemySpawnTimerRef.current = 0;
+      gameTimeRef.current = 0;
+      empTimerRef.current = 0;
+      setEmpCooldown(0);
+      
+      // Reset screen shake
+      screenShakeRef.current = 0;
+      
+      // Save reset state to cloud if logged in
+      if (currentUser) {
+          await saveGameToCloud(
+              currentUser, 
+              resetState as GameState, 
+              INITIAL_UPGRADES, 
+              playerName, 
+              highScore
+          );
+      }
+      
+      // Play sound
+      audioSystem.playUpgrade();
+  };
+
   const handleLogout = async () => {
       await logoutUser();
   };
@@ -1335,7 +1398,7 @@ service cloud.firestore {
                         </div>
 
                         <button 
-                            onClick={() => window.location.reload()}
+                            onClick={resetGame}
                             className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded uppercase tracking-wider font-orbitron shadow-lg shadow-red-900/50 transition-transform active:scale-95"
                         >
                             Reiniciar Sistema
