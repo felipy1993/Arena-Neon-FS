@@ -1,10 +1,9 @@
 
-
 import { Upgrade, Skin } from './types';
 
 export const CANVAS_SIZE = 800; // Resolução interna
 export const TICK_RATE = 60;
-export const MAX_ENEMIES_ON_SCREEN = 150; // Performance Limit - Reduzido para evitar travamentos
+export const MAX_ENEMIES_ON_SCREEN = 60; // Performance Limit - Reduzido para 60 conforme solicitado
 
 // --- SKIN GENERATOR ---
 const generateSkins = (): Skin[] => {
