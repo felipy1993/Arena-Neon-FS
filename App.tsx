@@ -50,6 +50,7 @@ import {
   Save,
   Home,
   KeyRound,
+  RotateCcw,
 } from "lucide-react";
 import { audioSystem } from "./audio";
 import {
@@ -119,6 +120,10 @@ const App: React.FC = () => {
 
   const [empCooldown, setEmpCooldown] = useState(0);
 
+  // --- WAVE ENEMY TRACKING ---
+  const [enemiesSpawnedThisWave, setEnemiesSpawnedThisWave] = useState(0);
+  const [totalEnemiesThisWave, setTotalEnemiesThisWave] = useState(0);
+
   // --- FIREBASE AUTH LISTENER ---
   useEffect(() => {
     if (!auth) {
@@ -169,6 +174,13 @@ const App: React.FC = () => {
       setHighScore(parseInt(savedScore));
     }
   }, []);
+
+  // --- PERSISTENCE: AUTO-SAVE HIGHSCORE ---
+  useEffect(() => {
+    if (highScore > 0) {
+      localStorage.setItem("neon_arena_highscore", highScore.toString());
+    }
+  }, [highScore]);
 
   // Auto-Save Interval (every 60s)
   useEffect(() => {
@@ -544,6 +556,15 @@ const App: React.FC = () => {
       setTimeout(() => audioSystem.playUpgrade(), 500);
     }
 
+    // Inicializar contadores de inimigos para a primeira onda
+    const WAVE_DURATION = 30;
+    const spawnInterval = Math.max(0.2, 2.0 - 1 * 0.05); // Wave 1
+    const spawnCount = Math.floor(1 + 1 / 5); // Wave 1
+    const totalSpawns = Math.floor(WAVE_DURATION / spawnInterval);
+    const totalEnemies = totalSpawns * spawnCount;
+    setTotalEnemiesThisWave(totalEnemies);
+    setEnemiesSpawnedThisWave(0);
+
     audioSystem.resume();
     audioSystem.playUpgrade();
   };
@@ -743,6 +764,16 @@ const App: React.FC = () => {
         let gemBonus = 1;
         if (gameState.wave % 10 === 0) gemBonus += 5;
 
+        // Calcular total de inimigos para a próxima onda
+        const nextWave = gameState.wave + 1;
+        const spawnInterval = Math.max(0.2, 2.0 - nextWave * 0.05);
+        const spawnCount = Math.floor(1 + nextWave / 5);
+        const totalSpawns = Math.floor(WAVE_DURATION / spawnInterval);
+        const totalEnemies = totalSpawns * spawnCount;
+        
+        setTotalEnemiesThisWave(totalEnemies);
+        setEnemiesSpawnedThisWave(0);
+
         setGameState((prev) => ({
           ...prev,
           wave: prev.wave + 1,
@@ -830,6 +861,9 @@ const App: React.FC = () => {
               stunTimer: 0, // Initialize stun timer
             });
           }
+          
+          // Incrementar contador de inimigos spawnados
+          setEnemiesSpawnedThisWave(prev => prev + spawnCount);
         }
         enemySpawnTimerRef.current = Math.max(0.2, 2.0 - gameState.wave * 0.05);
       }
@@ -1630,12 +1664,27 @@ service cloud.firestore {
               <Pause size={16} className="md:w-5 md:h-5" />
             )}
           </button>
+          <button
+            onClick={resetGame}
+            className="p-1.5 md:p-2 bg-red-900/40 border border-red-500/30 rounded text-red-400 hover:bg-red-900/80 active:scale-95 transition-all"
+            title="Reiniciar Jogo (Começar do Zero)"
+          >
+            <RotateCcw size={16} className="md:w-5 md:h-5" />
+          </button>
           <div className="text-right pl-2 border-l border-gray-800 hidden sm:block">
             <div className="text-[10px] text-gray-400 uppercase font-bold font-share">
               Nível
             </div>
             <div className="text-sm md:text-xl font-bold text-red-500 font-orbitron">
               ONDA {gameState.wave}
+            </div>
+          </div>
+          <div className="text-right pl-2 border-l border-gray-800 hidden md:block">
+            <div className="text-[10px] text-gray-400 uppercase font-bold font-share">
+              Inimigos
+            </div>
+            <div className="text-xs md:text-sm font-bold text-orange-400 font-mono">
+              {enemiesSpawnedThisWave}/{totalEnemiesThisWave}
             </div>
           </div>
         </div>
