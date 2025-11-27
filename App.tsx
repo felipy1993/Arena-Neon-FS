@@ -1631,10 +1631,10 @@ service cloud.firestore {
         </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center top-1 md:top-2">
-          <div className="flex items-center gap-2 text-cyan-100/50 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-0.5 font-orbitron">
+          <div className="hidden md:flex items-center gap-2 text-cyan-100/50 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-0.5 font-orbitron">
             <UserIcon size={10} /> {playerName}
           </div>
-          <div className="text-lg md:text-2xl font-black text-white font-mono tracking-tighter leading-none shadow-black drop-shadow-lg">
+          <div className="text-base md:text-2xl font-black text-white font-mono tracking-tighter leading-none shadow-black drop-shadow-lg">
             {gameState.score.toLocaleString().padStart(6, "0")}
           </div>
         </div>
@@ -1671,19 +1671,19 @@ service cloud.firestore {
           >
             <RotateCcw size={16} className="md:w-5 md:h-5" />
           </button>
-          <div className="text-right pl-2 border-l border-gray-800 hidden sm:block">
-            <div className="text-[10px] text-gray-400 uppercase font-bold font-share">
+          <div className="text-right pl-1 md:pl-2 border-l border-gray-800">
+            <div className="text-[8px] md:text-[10px] text-gray-400 uppercase font-bold font-share hidden sm:block">
               Nível
             </div>
-            <div className="text-sm md:text-xl font-bold text-red-500 font-orbitron">
+            <div className="text-xs md:text-xl font-bold text-red-500 font-orbitron whitespace-nowrap">
               ONDA {gameState.wave}
             </div>
           </div>
-          <div className="text-right pl-2 border-l border-gray-800 hidden md:block">
-            <div className="text-[10px] text-gray-400 uppercase font-bold font-share">
+          <div className="text-right pl-1 md:pl-2 border-l border-gray-800">
+            <div className="text-[8px] md:text-[10px] text-gray-400 uppercase font-bold font-share hidden sm:block">
               Inimigos
             </div>
-            <div className="text-xs md:text-sm font-bold text-orange-400 font-mono">
+            <div className="text-[10px] md:text-sm font-bold text-orange-400 font-mono">
               {enemiesSpawnedThisWave}/{totalEnemiesThisWave}
             </div>
           </div>
