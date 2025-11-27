@@ -4,7 +4,7 @@ import { Upgrade, Skin } from './types';
 
 export const CANVAS_SIZE = 800; // Resolução interna
 export const TICK_RATE = 60;
-export const MAX_ENEMIES_ON_SCREEN = 400; // Performance Limit
+export const MAX_ENEMIES_ON_SCREEN = 150; // Performance Limit - Reduzido para evitar travamentos
 
 // --- SKIN GENERATOR ---
 const generateSkins = (): Skin[] => {
@@ -97,7 +97,7 @@ export const INITIAL_UPGRADES: Upgrade[] = [
   // Ataque Avançado
   { id: 'multi_shot', name: 'Projéteis', type: 'attack', baseCost: 500, costMultiplier: 2.0, baseValue: 3, valuePerLevel: 1, level: 0, unit: 'x', description: 'Alvos simultâneos' },
   { id: 'crit_chn', name: 'Chance Crít.', type: 'attack', baseCost: 100, costMultiplier: 1.5, baseValue: 5, valuePerLevel: 1, level: 0, unit: '%', description: 'Chance de dano duplo' },
-  { id: 'crit_fac', name: 'Fator Crít.', type: 'attack', baseCost: 150, costMultiplier: 1.6, baseValue: 1.5, valuePerLevel: 0.2, level: 0, unit: 'x', description: 'Multiplicador ao criticar' },
+  { id: 'crit_fac', name: 'Fator Crít.', type: 'attack', baseCost: 150, costMultiplier: 1.6, baseValue: 1.0, valuePerLevel: 0.2, level: 0, unit: 'x', description: 'Multiplicador ao criticar' },
   { id: 'dmg_mtr', name: 'Dano/Metro', type: 'attack', baseCost: 200, costMultiplier: 1.6, baseValue: 1, valuePerLevel: 0.5, level: 0, unit: '%', description: 'Bônus por distância' },
   
   // Defesa

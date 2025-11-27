@@ -370,7 +370,7 @@ const App: React.FC = () => {
       attackSpeed: s["atk_spd"] || 1,
       range: s["range"] || 150,
       critChance: s["crit_chn"] || 0,
-      critFactor: s["crit_fac"] || 1.5,
+      critFactor: s["crit_fac"] || 1.0,
       damagePerMeter: s["dmg_mtr"] || 0,
       projectileCount: projCount,
       health: health,
