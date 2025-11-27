@@ -1645,7 +1645,7 @@ service cloud.firestore {
               setShowSkinModal(true);
               setGameState((prev) => ({ ...prev, isPaused: true }));
             }}
-            className="p-1.5 md:p-2 bg-purple-900/40 border border-purple-500/30 rounded text-purple-400 hover:bg-purple-900/80 active:scale-95 transition-all"
+            className="p-2 md:p-2 bg-purple-900/40 border border-purple-500/30 rounded text-purple-400 hover:bg-purple-900/80 active:scale-95 transition-all"
             title="Loja de Skins"
           >
             <Palette size={16} className="md:w-5 md:h-5" />
@@ -1666,7 +1666,7 @@ service cloud.firestore {
           </button>
           <button
             onClick={resetGame}
-            className="p-1.5 md:p-2 bg-red-900/40 border border-red-500/30 rounded text-red-400 hover:bg-red-900/80 active:scale-95 transition-all"
+            className="p-2 md:p-2 bg-red-900/40 border border-red-500/30 rounded text-red-400 hover:bg-red-900/80 active:scale-95 transition-all"
             title="Reiniciar Jogo (Começar do Zero)"
           >
             <RotateCcw size={16} className="md:w-5 md:h-5" />
@@ -2027,7 +2027,7 @@ service cloud.firestore {
         </div>
 
         {/* SIDEBAR (UPGRADES) */}
-        <div className="h-[40%] md:h-full md:w-96 bg-gray-900 border-t md:border-t-0 md:border-l border-gray-800 z-20 flex flex-col shadow-xl relative order-2">
+        <div className="h-[35%] md:h-full md:w-96 bg-gray-900 border-t md:border-t-0 md:border-l border-gray-800 z-20 flex flex-col shadow-xl relative order-2">
           <div className="p-2 md:p-3 bg-gray-900 border-b border-gray-800 font-orbitron text-cyan-400 font-bold uppercase tracking-wider text-xs md:text-sm flex justify-between items-center shadow-md z-10 shrink-0">
             <div className="flex items-center gap-2">
               <Radio
