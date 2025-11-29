@@ -258,6 +258,11 @@ const App: React.FC = () => {
         loginStreak: gameState.loginStreak,
       };
       localStorage.setItem("neon_arena_gamestate", JSON.stringify(stateToSave));
+      // Salva timestamp para comparação com nuvem
+      localStorage.setItem(
+        "neon_arena_gamestate_timestamp",
+        Date.now().toString()
+      );
     }
   }, [
     gameState.cash,
@@ -517,6 +522,41 @@ const App: React.FC = () => {
     }
   };
 
+  // --- SMART MERGE: Skins (smart merge da skin selecionada)
+  const smartMergeSkin = (cloudData: CloudSaveData): string => {
+    // Pega skin local e timestamp
+    const localStateJson = localStorage.getItem("neon_arena_gamestate");
+    const localTimestamp = localStorage.getItem(
+      "neon_arena_gamestate_timestamp"
+    );
+
+    // Se há dados locais, SEMPRE usa local (user escolheu manualmente)
+    if (localStateJson) {
+      try {
+        const localState = JSON.parse(localStateJson);
+        const localSkin = localState.selectedSkinId || "default";
+
+        // Validação: skin local deve estar em ownedSkinIds (local ou nuvem)
+        const ownedSkinsLocal = localState.ownedSkinIds || ["default"];
+        const ownedSkinsCloud = cloudData.ownedSkinIds || ["default"];
+        const allOwnedSkins = [
+          ...new Set([...ownedSkinsLocal, ...ownedSkinsCloud]),
+        ];
+
+        if (allOwnedSkins.includes(localSkin)) {
+          console.log(`🎯 Skin local selecionada: ${localSkin}`);
+          return localSkin;
+        }
+      } catch (e) {
+        console.error("❌ Erro ao ler skin local:", e);
+      }
+    }
+
+    // Sem dados locais, usa nuvem como fallback
+    console.log("📥 Usando skin da nuvem");
+    return cloudData.selectedSkinId || "default";
+  };
+
   const applyCloudData = (data: CloudSaveData) => {
     if (!data) {
       console.error("❌ Dados da nuvem inválidos");
@@ -529,6 +569,7 @@ const App: React.FC = () => {
 
     // Smart merge: usa a versão mais recente (local vs nuvem)
     const mergedUpgrades = smartMergeUpgrades(data);
+    const mergedSkinId = smartMergeSkin(data);
 
     // Sanitize upgrades: ensure crit_chn and crit_fac start at level 0 if not purchased
     const sanitizedUpgrades = Array.isArray(mergedUpgrades)
@@ -550,7 +591,7 @@ const App: React.FC = () => {
       ownedSkinIds: Array.isArray(data.ownedSkinIds)
         ? data.ownedSkinIds
         : ["default"],
-      selectedSkinId: data.selectedSkinId || "default",
+      selectedSkinId: mergedSkinId,
       lastLoginDate: data.lastLoginDate || "",
       loginStreak: data.loginStreak || 0,
     }));
