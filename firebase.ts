@@ -295,7 +295,9 @@ export const updateLeaderboard = async (
 };
 
 // Carrega leaderboard global (top 50)
-export const loadLeaderboard = async (limit: number = 50): Promise<any[]> => {
+export const loadLeaderboard = async (
+  limitCount: number = 50
+): Promise<any[]> => {
   if (!db) return [];
 
   try {
@@ -303,7 +305,7 @@ export const loadLeaderboard = async (limit: number = 50): Promise<any[]> => {
     const q = query(
       collection(db, "leaderboard"),
       orderBy("highScore", "desc"),
-      limit(limit)
+      limit(limitCount)
     );
 
     const querySnapshot = await getDocs(q);
