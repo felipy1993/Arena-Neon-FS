@@ -238,7 +238,10 @@ const App: React.FC = () => {
     if (upgrades && upgrades.length > 0) {
       localStorage.setItem("neon_arena_upgrades", JSON.stringify(upgrades));
       // Salva timestamp para comparação com nuvem
-      localStorage.setItem("neon_arena_upgrades_timestamp", Date.now().toString());
+      localStorage.setItem(
+        "neon_arena_upgrades_timestamp",
+        Date.now().toString()
+      );
     }
   }, [upgrades]);
 
@@ -476,8 +479,10 @@ const App: React.FC = () => {
   const smartMergeUpgrades = (cloudData: CloudSaveData): Upgrade[] => {
     // Pega upgrades locais e timestamp
     const localUpgradesJson = localStorage.getItem("neon_arena_upgrades");
-    const localTimestamp = localStorage.getItem("neon_arena_upgrades_timestamp");
-    
+    const localTimestamp = localStorage.getItem(
+      "neon_arena_upgrades_timestamp"
+    );
+
     if (!localUpgradesJson || !localTimestamp) {
       // Sem dados locais, usa nuvem
       console.log("📥 Nenhum upgrade local, usando nuvem");
@@ -487,13 +492,19 @@ const App: React.FC = () => {
     try {
       const localUpgrades = JSON.parse(localUpgradesJson);
       const localTime = parseInt(localTimestamp);
-      
+
       // Tenta extrair timestamp da nuvem (se disponível)
       const cloudTime = cloudData.lastSaved?.toMillis?.() || 0;
-      
+
       if (localTime > cloudTime) {
         // Local é mais recente, mantém local
-        console.log(`🔄 Upgrade local é mais recente (${new Date(localTime).toLocaleTimeString()}) vs nuvem (${new Date(cloudTime).toLocaleTimeString()})`);
+        console.log(
+          `🔄 Upgrade local é mais recente (${new Date(
+            localTime
+          ).toLocaleTimeString()}) vs nuvem (${new Date(
+            cloudTime
+          ).toLocaleTimeString()})`
+        );
         return localUpgrades;
       } else {
         // Nuvem é mais recente ou igual, usa nuvem
