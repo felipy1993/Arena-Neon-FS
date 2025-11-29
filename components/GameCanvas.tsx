@@ -10,7 +10,7 @@ import {
 import { COLOR_PALETTE, CANVAS_SIZE } from "../constants";
 
 interface GameCanvasProps {
-  stats: PlayerStats;
+  statsRef: React.MutableRefObject<PlayerStats>;
   enemies: React.MutableRefObject<Enemy[]>;
   projectiles: React.MutableRefObject<Projectile[]>;
   texts: React.MutableRefObject<FloatingText[]>;
@@ -26,7 +26,7 @@ interface GameCanvasProps {
 }
 
 const GameCanvas: React.FC<GameCanvasProps> = ({
-  stats,
+  statsRef,
   enemies,
   projectiles,
   texts,
@@ -37,11 +37,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   screenShakeRef,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  const statsRef = useRef(stats);
-  useEffect(() => {
-    statsRef.current = stats;
-  }, [stats]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -56,8 +51,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       const enemyCount = enemies.current.length;
 
       // DYNAMIC PERFORMANCE MODE
-      const lowQualityMode = enemyCount > 100;
-      const ultraLowQualityMode = enemyCount > 300;
+      const lowQualityMode = enemyCount > 15;
+      const ultraLowQualityMode = enemyCount > 20;
 
       // Clear Screen
       ctx.fillStyle = COLOR_PALETTE.background;
@@ -128,119 +123,116 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.restore();
       });
 
+      // BATCH RENDERING: Group enemies by color to minimize state changes
+      // This is O(N) but saves expensive canvas context switches
+      const enemiesByColor: Record<string, Enemy[]> = {};
+      
+      enemies.current.forEach(enemy => {
+        if (!enemiesByColor[enemy.color]) enemiesByColor[enemy.color] = [];
+        enemiesByColor[enemy.color].push(enemy);
+      });
+
       // Draw Enemies
-      enemies.current.forEach((enemy) => {
-        ctx.save();
-        // Glow - EXPENSIVE! Disable in low quality
-        if (!lowQualityMode && enemy.type === "boss") {
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = enemy.color;
-        } else if (!lowQualityMode) {
-          ctx.shadowBlur = 15;
-          ctx.shadowColor = enemy.color;
+      Object.entries(enemiesByColor).forEach(([color, enemyGroup]) => {
+        ctx.fillStyle = color;
+        // Shadow only if not low quality
+        if (!lowQualityMode) {
+           ctx.shadowBlur = 15;
+           ctx.shadowColor = color;
         }
 
-        ctx.fillStyle = enemy.color;
         ctx.beginPath();
+        
+        enemyGroup.forEach(enemy => {
+           // ULTRA LOW QUALITY: Always draw circles, ignore shapes
+           if (ultraLowQualityMode) {
+              ctx.moveTo(enemy.x + enemy.radius, enemy.y);
+              ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+              return;
+           }
 
-        // Different shapes for enemy types
-        if (enemy.type === "standard") {
-          ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-        } else if (enemy.type === "speedster") {
-          // Triangle pointing to player
-          const angle = Math.atan2(cy - enemy.y, cx - enemy.x);
-          const r = enemy.radius;
-          ctx.save();
-          ctx.translate(enemy.x, enemy.y);
-          ctx.rotate(angle);
-          ctx.beginPath();
-          ctx.moveTo(r, 0);
-          ctx.lineTo(-r, r / 1.5);
-          ctx.lineTo(-r, -r / 1.5);
-          ctx.closePath();
-          ctx.restore();
-        } else if (enemy.type === "tank") {
-          // Square
-          ctx.rect(
-            enemy.x - enemy.radius,
-            enemy.y - enemy.radius,
-            enemy.radius * 2,
-            enemy.radius * 2
-          );
-        } else if (enemy.type === "boss") {
-          // Pentagon
-          const sides = 5;
-          const r = enemy.radius;
-          ctx.beginPath();
-          for (let i = 0; i < sides; i++) {
-            const angle = (i * 2 * Math.PI) / sides - Math.PI / 2;
-            const px = enemy.x + r * Math.cos(angle);
-            const py = enemy.y + r * Math.sin(angle);
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.closePath();
-        } else {
-          ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-        }
+           // Standard Rendering
+           if (enemy.type === "standard") {
+              ctx.moveTo(enemy.x + enemy.radius, enemy.y);
+              ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+           } else if (enemy.type === "speedster") {
+              // Triangle
+              const angle = Math.atan2(cy - enemy.y, cx - enemy.x);
+              const r = enemy.radius;
+              // Manually rotate points to avoid ctx.save/restore per enemy (expensive!)
+              const cos = Math.cos(angle);
+              const sin = Math.sin(angle);
+              
+              // Tip
+              const tipX = enemy.x + cos * r;
+              const tipY = enemy.y + sin * r;
+              
+              // Back Left
+              const blX = enemy.x + Math.cos(angle + 2.5) * r;
+              const blY = enemy.y + Math.sin(angle + 2.5) * r;
+              
+              // Back Right
+              const brX = enemy.x + Math.cos(angle - 2.5) * r;
+              const brY = enemy.y + Math.sin(angle - 2.5) * r;
 
+              ctx.moveTo(tipX, tipY);
+              ctx.lineTo(blX, blY);
+              ctx.lineTo(brX, brY);
+              ctx.lineTo(tipX, tipY);
+           } else if (enemy.type === "tank") {
+              ctx.rect(enemy.x - enemy.radius, enemy.y - enemy.radius, enemy.radius * 2, enemy.radius * 2);
+           } else if (enemy.type === "boss") {
+              ctx.moveTo(enemy.x + enemy.radius, enemy.y);
+              ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+           }
+        });
+        
         ctx.fill();
-
-        // Stroke is also expensive on many objects
-        if (!ultraLowQualityMode) {
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = enemy.type === "boss" ? 3 : 1;
-          ctx.stroke();
+        
+        // Reset Shadow
+        if (!lowQualityMode) {
+           ctx.shadowBlur = 0;
         }
+      });
 
-        ctx.shadowBlur = 0;
+      // Draw HP Bars & Boss Effects (Separate Pass)
+      enemies.current.forEach((enemy) => {
+         // Boss Glow (Special Case)
+         if (enemy.type === "boss" && !lowQualityMode) {
+            ctx.save();
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = enemy.color;
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+         }
 
-        // STUN VISUAL
-        if (enemy.stunTimer > 0) {
-          ctx.save();
-          ctx.translate(enemy.x, enemy.y);
-          // Draw electric static effect
-          ctx.strokeStyle = "#ffff00";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          const r = enemy.radius + 4;
-          const segments = 8;
-          for (let i = 0; i < segments; i++) {
-            const angle = ((Math.PI * 2) / segments) * i;
-            const jitter = (Math.random() - 0.5) * 5;
-            if (i === 0) ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
-            else
-              ctx.lineTo(
-                Math.cos(angle) * (r + jitter),
-                Math.sin(angle) * (r + jitter)
-              );
-          }
-          ctx.closePath();
-          ctx.stroke();
-          ctx.restore();
-        }
+         // HP Bar
+         if (enemy.type === "boss" || (!lowQualityMode && enemy.hp < enemy.maxHp)) {
+            const hpPercent = Math.max(0, enemy.hp / enemy.maxHp);
+            const barWidth = enemy.type === "boss" ? 60 : 24;
+            const barHeight = enemy.type === "boss" ? 6 : 4;
+            const barX = enemy.x - barWidth / 2;
+            const barY = enemy.y - enemy.radius - (enemy.type === "boss" ? 15 : 10);
 
-        // HP Bar - Only show if damaged or nearby in low quality, ALWAYS for Boss
-        if (
-          enemy.type === "boss" ||
-          !lowQualityMode ||
-          enemy.hp < enemy.maxHp
-        ) {
-          const hpPercent = Math.max(0, enemy.hp / enemy.maxHp);
-          const barWidth = enemy.type === "boss" ? 60 : 24;
-          const barHeight = enemy.type === "boss" ? 6 : 4;
-          const barX = enemy.x - barWidth / 2;
-          const barY =
-            enemy.y - enemy.radius - (enemy.type === "boss" ? 15 : 10);
+            ctx.fillStyle = "#000";
+            ctx.fillRect(barX, barY, barWidth, barHeight);
 
-          ctx.fillStyle = "#000";
-          ctx.fillRect(barX, barY, barWidth, barHeight);
-
-          // Boss HP bar changes color
-          ctx.fillStyle =
-            enemy.type === "boss" ? "#a855f7" : COLOR_PALETTE.secondary;
-          ctx.fillRect(barX, barY, barWidth * hpPercent, barHeight);
-        }
+            ctx.fillStyle = enemy.type === "boss" ? "#a855f7" : COLOR_PALETTE.secondary;
+            ctx.fillRect(barX, barY, barWidth * hpPercent, barHeight);
+         }
+         
+         // Stun Visual
+         if (enemy.stunTimer > 0 && !ultraLowQualityMode) {
+             ctx.strokeStyle = "#ffff00";
+             ctx.lineWidth = 2;
+             ctx.beginPath();
+             ctx.arc(enemy.x, enemy.y, enemy.radius + 4, 0, Math.PI * 2); // Simple circle for stun
+             ctx.stroke();
+         }
       });
 
       // Draw Projectiles
@@ -430,6 +422,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     render();
 
     return () => cancelAnimationFrame(animationFrameId);
+
   }, [selectedSkin]);
 
   return (
@@ -444,4 +437,4 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   );
 };
 
-export default GameCanvas;
+export default React.memo(GameCanvas);

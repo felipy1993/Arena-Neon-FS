@@ -1,5 +1,4 @@
 
-
 export interface Upgrade {
   id: string;
   name: string;
@@ -78,7 +77,7 @@ export interface Projectile {
   id: number;
   x: number;
   y: number;
-  targetId: number;
+  target: Enemy; // Direct reference for O(1) access
   speed: number;
   damage: number;
   isCrit: boolean;
