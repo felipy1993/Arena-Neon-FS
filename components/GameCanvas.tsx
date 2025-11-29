@@ -43,10 +43,43 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     if (!canvas) return;
     const ctx = canvas.getContext("2d", { alpha: false }); // Optimize for no transparency on bg
     if (!ctx) return;
+    // Handle devicePixelRatio to keep canvas crisp on Retina displays
+    const resizeCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      // Set internal pixel size
+      canvas.width = CANVAS_SIZE * dpr;
+      canvas.height = CANVAS_SIZE * dpr;
+      // CSS size stays the same
+      canvas.style.width = `${CANVAS_SIZE}px`;
+      canvas.style.height = `${CANVAS_SIZE}px`;
+      // Normalize drawing operations to CSS pixels
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
 
     let animationFrameId: number;
 
+    // FPS counter
+    let lastFrameTime = performance.now();
+    let fpsFrameCount = 0;
+    let lastFpsUpdate = lastFrameTime;
+    let measuredFps = 0;
+
     const render = () => {
+      const now = performance.now();
+      const frameDelta = now - lastFrameTime;
+      lastFrameTime = now;
+      fpsFrameCount++;
+      if (now - lastFpsUpdate >= 500) {
+        measuredFps = Math.round(
+          (fpsFrameCount * 1000) / (now - lastFpsUpdate)
+        );
+        fpsFrameCount = 0;
+        lastFpsUpdate = now;
+      }
+
       const currentStats = statsRef.current;
       const enemyCount = enemies.current.length;
 
@@ -126,8 +159,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       // BATCH RENDERING: Group enemies by color to minimize state changes
       // This is O(N) but saves expensive canvas context switches
       const enemiesByColor: Record<string, Enemy[]> = {};
-      
-      enemies.current.forEach(enemy => {
+
+      enemies.current.forEach((enemy) => {
         if (!enemiesByColor[enemy.color]) enemiesByColor[enemy.color] = [];
         enemiesByColor[enemy.color].push(enemy);
       });
@@ -137,102 +170,112 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillStyle = color;
         // Shadow only if not low quality
         if (!lowQualityMode) {
-           ctx.shadowBlur = 15;
-           ctx.shadowColor = color;
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = color;
         }
 
         ctx.beginPath();
-        
-        enemyGroup.forEach(enemy => {
-           // ULTRA LOW QUALITY: Always draw circles, ignore shapes
-           if (ultraLowQualityMode) {
-              ctx.moveTo(enemy.x + enemy.radius, enemy.y);
-              ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-              return;
-           }
 
-           // Standard Rendering
-           if (enemy.type === "standard") {
-              ctx.moveTo(enemy.x + enemy.radius, enemy.y);
-              ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-           } else if (enemy.type === "speedster") {
-              // Triangle
-              const angle = Math.atan2(cy - enemy.y, cx - enemy.x);
-              const r = enemy.radius;
-              // Manually rotate points to avoid ctx.save/restore per enemy (expensive!)
-              const cos = Math.cos(angle);
-              const sin = Math.sin(angle);
-              
-              // Tip
-              const tipX = enemy.x + cos * r;
-              const tipY = enemy.y + sin * r;
-              
-              // Back Left
-              const blX = enemy.x + Math.cos(angle + 2.5) * r;
-              const blY = enemy.y + Math.sin(angle + 2.5) * r;
-              
-              // Back Right
-              const brX = enemy.x + Math.cos(angle - 2.5) * r;
-              const brY = enemy.y + Math.sin(angle - 2.5) * r;
+        enemyGroup.forEach((enemy) => {
+          // ULTRA LOW QUALITY: Always draw circles, ignore shapes
+          if (ultraLowQualityMode) {
+            ctx.moveTo(enemy.x + enemy.radius, enemy.y);
+            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+            return;
+          }
 
-              ctx.moveTo(tipX, tipY);
-              ctx.lineTo(blX, blY);
-              ctx.lineTo(brX, brY);
-              ctx.lineTo(tipX, tipY);
-           } else if (enemy.type === "tank") {
-              ctx.rect(enemy.x - enemy.radius, enemy.y - enemy.radius, enemy.radius * 2, enemy.radius * 2);
-           } else if (enemy.type === "boss") {
-              ctx.moveTo(enemy.x + enemy.radius, enemy.y);
-              ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-           }
+          // Standard Rendering
+          if (enemy.type === "standard") {
+            ctx.moveTo(enemy.x + enemy.radius, enemy.y);
+            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+          } else if (enemy.type === "speedster") {
+            // Triangle
+            const angle = Math.atan2(cy - enemy.y, cx - enemy.x);
+            const r = enemy.radius;
+            // Manually rotate points to avoid ctx.save/restore per enemy (expensive!)
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            // Tip
+            const tipX = enemy.x + cos * r;
+            const tipY = enemy.y + sin * r;
+
+            // Back Left
+            const blX = enemy.x + Math.cos(angle + 2.5) * r;
+            const blY = enemy.y + Math.sin(angle + 2.5) * r;
+
+            // Back Right
+            const brX = enemy.x + Math.cos(angle - 2.5) * r;
+            const brY = enemy.y + Math.sin(angle - 2.5) * r;
+
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(blX, blY);
+            ctx.lineTo(brX, brY);
+            ctx.lineTo(tipX, tipY);
+          } else if (enemy.type === "tank") {
+            ctx.rect(
+              enemy.x - enemy.radius,
+              enemy.y - enemy.radius,
+              enemy.radius * 2,
+              enemy.radius * 2
+            );
+          } else if (enemy.type === "boss") {
+            ctx.moveTo(enemy.x + enemy.radius, enemy.y);
+            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+          }
         });
-        
+
         ctx.fill();
-        
+
         // Reset Shadow
         if (!lowQualityMode) {
-           ctx.shadowBlur = 0;
+          ctx.shadowBlur = 0;
         }
       });
 
       // Draw HP Bars & Boss Effects (Separate Pass)
       enemies.current.forEach((enemy) => {
-         // Boss Glow (Special Case)
-         if (enemy.type === "boss" && !lowQualityMode) {
-            ctx.save();
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = enemy.color;
-            ctx.strokeStyle = "#fff";
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.restore();
-         }
+        // Boss Glow (Special Case)
+        if (enemy.type === "boss" && !lowQualityMode) {
+          ctx.save();
+          ctx.shadowBlur = 30;
+          ctx.shadowColor = enemy.color;
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
 
-         // HP Bar
-         if (enemy.type === "boss" || (!lowQualityMode && enemy.hp < enemy.maxHp)) {
-            const hpPercent = Math.max(0, enemy.hp / enemy.maxHp);
-            const barWidth = enemy.type === "boss" ? 60 : 24;
-            const barHeight = enemy.type === "boss" ? 6 : 4;
-            const barX = enemy.x - barWidth / 2;
-            const barY = enemy.y - enemy.radius - (enemy.type === "boss" ? 15 : 10);
+        // HP Bar
+        if (
+          enemy.type === "boss" ||
+          (!lowQualityMode && enemy.hp < enemy.maxHp)
+        ) {
+          const hpPercent = Math.max(0, enemy.hp / enemy.maxHp);
+          const barWidth = enemy.type === "boss" ? 60 : 24;
+          const barHeight = enemy.type === "boss" ? 6 : 4;
+          const barX = enemy.x - barWidth / 2;
+          const barY =
+            enemy.y - enemy.radius - (enemy.type === "boss" ? 15 : 10);
 
-            ctx.fillStyle = "#000";
-            ctx.fillRect(barX, barY, barWidth, barHeight);
+          ctx.fillStyle = "#000";
+          ctx.fillRect(barX, barY, barWidth, barHeight);
 
-            ctx.fillStyle = enemy.type === "boss" ? "#a855f7" : COLOR_PALETTE.secondary;
-            ctx.fillRect(barX, barY, barWidth * hpPercent, barHeight);
-         }
-         
-         // Stun Visual
-         if (enemy.stunTimer > 0 && !ultraLowQualityMode) {
-             ctx.strokeStyle = "#ffff00";
-             ctx.lineWidth = 2;
-             ctx.beginPath();
-             ctx.arc(enemy.x, enemy.y, enemy.radius + 4, 0, Math.PI * 2); // Simple circle for stun
-             ctx.stroke();
-         }
+          ctx.fillStyle =
+            enemy.type === "boss" ? "#a855f7" : COLOR_PALETTE.secondary;
+          ctx.fillRect(barX, barY, barWidth * hpPercent, barHeight);
+        }
+
+        // Stun Visual
+        if (enemy.stunTimer > 0 && !ultraLowQualityMode) {
+          ctx.strokeStyle = "#ffff00";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, enemy.radius + 4, 0, Math.PI * 2); // Simple circle for stun
+          ctx.stroke();
+        }
       });
 
       // Draw Projectiles
@@ -414,6 +457,16 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.restore();
       });
 
+      // Draw FPS overlay (top-left)
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(6, 6, 64, 20);
+      ctx.fillStyle = "#00ffcc";
+      ctx.font = "bold 12px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`FPS: ${measuredFps}`, 10, 20);
+      ctx.restore();
+
       ctx.restore(); // Restore main context save
 
       animationFrameId = requestAnimationFrame(render);
@@ -421,8 +474,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
     render();
 
-    return () => cancelAnimationFrame(animationFrameId);
-
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener("resize", resizeCanvas);
+    };
   }, [selectedSkin]);
 
   return (

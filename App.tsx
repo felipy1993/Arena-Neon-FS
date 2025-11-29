@@ -19,7 +19,9 @@ import {
   MAX_ENEMIES_ON_SCREEN,
   MAX_PARTICLES,
   UI_UPDATE_INTERVAL,
+  WAVE_DURATION,
 } from "./constants";
+import { UPGRADE_LIMITS } from "./constants";
 import {
   Coins,
   Skull,
@@ -55,6 +57,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { audioSystem } from "./audio";
+import { nextId } from "./utils";
 import {
   registerWithEmail,
   loginWithEmailOrUsername,
@@ -365,6 +368,21 @@ const App: React.FC = () => {
       }
     });
 
+    // Apply configured caps/mins from constants to the raw upgrade-derived values
+    try {
+      Object.entries(UPGRADE_LIMITS).forEach(([key, range]) => {
+        if (s[key] !== undefined) {
+          if (typeof range.min === "number")
+            s[key] = Math.max(range.min, s[key]);
+          if (typeof range.max === "number")
+            s[key] = Math.min(range.max, s[key]);
+        }
+      });
+    } catch (e) {
+      // In case UPGRADE_LIMITS not present or malformed, fail silently
+      console.warn("Erro ao aplicar limites de upgrades:", e);
+    }
+
     const maxHealth = Math.max(10, s["hp"] || 100);
     const health =
       currentHp !== undefined ? Math.min(currentHp, maxHealth) : maxHealth;
@@ -375,9 +393,16 @@ const App: React.FC = () => {
         ? Math.min(currentShield, maxShield)
         : maxShield;
 
-    const baseRegen = 0.3;
+    const baseRegen = 1.0; // increase passive regen so runs last longer
     const totalRegen = baseRegen + (s["regen"] || 0);
-    const projCount = 3 + (s["multi_shot"] || 0); // Base 3 + upgrade
+    // Cap projectile count to configured maximum (total projectiles, not extra)
+    const rawProjCount = 3 + (s["multi_shot"] || 0); // Base 3 + upgrade
+    const projCap =
+      UPGRADE_LIMITS.multi_shot &&
+      typeof UPGRADE_LIMITS.multi_shot.max === "number"
+        ? UPGRADE_LIMITS.multi_shot.max
+        : 12;
+    const projCount = Math.min(rawProjCount, projCap);
 
     return {
       damage: s["dmg"] || 5,
@@ -433,26 +458,36 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!gameState.isGameStarted) return;
     const interval = setInterval(() => {
-       // Only update React state if values changed significantly to avoid re-renders
-       setGameState(prev => {
-          if (prev.score === gameStateRef.current.score && 
-              prev.cash === gameStateRef.current.cash &&
-              prev.gems === gameStateRef.current.gems) return prev;
-          
-          return {
-             ...prev,
-             score: gameStateRef.current.score,
-             cash: gameStateRef.current.cash,
-             gems: gameStateRef.current.gems,
-          };
-       });
-       
-       // Also sync stats for health bar UI (if not using canvas for it)
-       setStats(prev => {
-          if (prev.health === statsRef.current.health && prev.shield === statsRef.current.shield) return prev;
-          return { ...prev, health: statsRef.current.health, shield: statsRef.current.shield };
-       });
+      // Only update React state if values changed significantly to avoid re-renders
+      setGameState((prev) => {
+        if (
+          prev.score === gameStateRef.current.score &&
+          prev.cash === gameStateRef.current.cash &&
+          prev.gems === gameStateRef.current.gems
+        )
+          return prev;
 
+        return {
+          ...prev,
+          score: gameStateRef.current.score,
+          cash: gameStateRef.current.cash,
+          gems: gameStateRef.current.gems,
+        };
+      });
+
+      // Also sync stats for health bar UI (if not using canvas for it)
+      setStats((prev) => {
+        if (
+          prev.health === statsRef.current.health &&
+          prev.shield === statsRef.current.shield
+        )
+          return prev;
+        return {
+          ...prev,
+          health: statsRef.current.health,
+          shield: statsRef.current.shield,
+        };
+      });
     }, UI_UPDATE_INTERVAL);
     return () => clearInterval(interval);
   }, [gameState.isGameStarted]);
@@ -473,7 +508,7 @@ const App: React.FC = () => {
   ) => {
     if (textsRef.current.length > 50) return;
     textsRef.current.push({
-      id: Math.random(),
+      id: nextId(),
       x,
       y,
       text,
@@ -504,7 +539,7 @@ const App: React.FC = () => {
       const angle = Math.random() * Math.PI * 2;
       const speed = Math.random() * 3 + 1;
       particlesRef.current.push({
-        id: Math.random(),
+        id: nextId(),
         x,
         y,
         vx: Math.cos(angle) * speed,
@@ -601,9 +636,8 @@ const App: React.FC = () => {
     }
 
     // Inicializar contadores de inimigos para a primeira onda
-    const WAVE_DURATION = 30;
-    const spawnInterval = Math.max(0.2, 2.0 - 1 * 0.05); // Wave 1
-    const spawnCount = Math.floor(1 + 1 / 5); // Wave 1
+    const spawnInterval = Math.max(0.25, 1.8 - 1 * 0.05); // Wave 1 (faster spawn)
+    const spawnCount = Math.floor(2 + 1 / 3); // Wave 1 (more per spawn)
     const totalSpawns = Math.floor(WAVE_DURATION / spawnInterval);
     const totalEnemies = totalSpawns * spawnCount;
     setTotalEnemiesThisWave(totalEnemies);
@@ -768,12 +802,19 @@ const App: React.FC = () => {
         }
 
         if (newHp < currentStats.maxHealth) {
-          newHp = Math.min(currentStats.maxHealth, newHp + currentStats.regen * factor);
+          newHp = Math.min(
+            currentStats.maxHealth,
+            newHp + currentStats.regen * factor
+          );
         }
 
         // Apply changes to ref
-        statsRef.current = { ...currentStats, health: newHp, shield: newShield };
-        
+        statsRef.current = {
+          ...currentStats,
+          health: newHp,
+          shield: newShield,
+        };
+
         // Occasional text for regen
         if (
           currentStats.regen * factor >= 0.5 &&
@@ -787,14 +828,13 @@ const App: React.FC = () => {
             COLOR_PALETTE.success
           );
         }
-        
+
         lastRegenTimeRef.current = time;
       }
 
       waveTimerRef.current += dt;
       enemySpawnTimerRef.current -= dt;
 
-      const WAVE_DURATION = 30;
       if (waveTimerRef.current >= WAVE_DURATION) {
         waveTimerRef.current = 0;
 
@@ -821,11 +861,12 @@ const App: React.FC = () => {
 
         // Calcular total de inimigos para a próxima onda
         const nextWave = gameState.wave + 1;
-        const spawnInterval = Math.max(0.2, 2.0 - nextWave * 0.05);
-        const spawnCount = Math.floor(1 + nextWave / 5);
+        // Aggressive difficulty escalation
+        const spawnInterval = Math.max(0.25, 1.8 - nextWave * 0.05);
+        const spawnCount = Math.floor(2 + nextWave / 3);
         const totalSpawns = Math.floor(WAVE_DURATION / spawnInterval);
         const totalEnemies = totalSpawns * spawnCount;
-        
+
         setTotalEnemiesThisWave(totalEnemies);
         setEnemiesSpawnedThisWave(0);
 
@@ -837,18 +878,8 @@ const App: React.FC = () => {
           `ONDA ${gameState.wave} COMPLETA!`,
           COLOR_PALETTE.accent
         );
-        spawnFloatingText(
-          cx,
-          130,
-          `+$${waveBonus}`,
-          COLOR_PALETTE.accent
-        );
-        spawnFloatingText(
-          cx,
-          160,
-          `+${gemBonus} GEMAS`,
-          "#a855f7"
-        );
+        spawnFloatingText(cx, 130, `+$${waveBonus}`, COLOR_PALETTE.accent);
+        spawnFloatingText(cx, 160, `+${gemBonus} GEMAS`, "#a855f7");
         audioSystem.playUpgrade();
       }
 
@@ -859,8 +890,9 @@ const App: React.FC = () => {
 
       if (enemySpawnTimerRef.current <= 0) {
         if (enemiesRef.current.length < MAX_ENEMIES_ON_SCREEN) {
-          const difficulty = 1 + gameState.wave * 0.3;
-          const spawnCount = Math.floor(1 + gameState.wave / 5);
+          // Aggressive difficulty growth
+          const difficulty = 1 + gameState.wave * 0.25;
+          const spawnCount = Math.max(2, Math.floor(2 + gameState.wave / 3));
 
           for (let i = 0; i < spawnCount; i++) {
             const angle = Math.random() * Math.PI * 2;
@@ -875,14 +907,14 @@ const App: React.FC = () => {
 
             const chance = Math.random();
 
-            if (gameState.wave >= 8 && chance > 0.8) {
+            if (gameState.wave >= 4 && chance > 0.75) {
               type = "tank";
               hpMult = 4;
               speedMult = 0.6;
               radius = 18;
               color = "#f97316";
               damageMult = 2;
-            } else if (gameState.wave >= 5 && chance > 0.7) {
+            } else if (gameState.wave >= 2 && chance > 0.65) {
               type = "speedster";
               hpMult = 0.5;
               speedMult = 1.8;
@@ -891,28 +923,31 @@ const App: React.FC = () => {
             }
 
             enemiesRef.current.push({
-              id: Math.random(),
+              id: nextId(),
               type: type,
               x: cx + Math.cos(angle) * dist,
               y: cy + Math.sin(angle) * dist,
               hp: 20 * difficulty * hpMult,
               maxHp: 20 * difficulty * hpMult,
               speed:
-                (0.5 + Math.random() * 0.5) *
-                (1 + gameState.wave * 0.05) *
+                (0.6 + Math.random() * 0.6) *
+                (1 + gameState.wave * 0.08) *
                 speedMult,
-              damage: 2 * difficulty * damageMult,
+              damage: Math.max(1, 1.5 * difficulty * damageMult),
               radius: radius,
               color: color,
               isDead: false,
               stunTimer: 0, // Initialize stun timer
             });
           }
-          
+
           // Incrementar contador de inimigos spawnados
-          setEnemiesSpawnedThisWave(prev => prev + spawnCount);
+          setEnemiesSpawnedThisWave((prev) => prev + spawnCount);
         }
-        enemySpawnTimerRef.current = Math.max(0.2, 2.0 - gameState.wave * 0.05);
+        enemySpawnTimerRef.current = Math.max(
+          0.25,
+          1.8 - gameState.wave * 0.05
+        );
       }
 
       enemiesRef.current.forEach((enemy) => {
@@ -947,12 +982,7 @@ const App: React.FC = () => {
                 if (currentShield >= rawDmg) {
                   currentShield -= rawDmg;
                   dmgToHp = 0;
-                  spawnFloatingText(
-                    cx,
-                    cy,
-                    `ABSORVIDO`,
-                    COLOR_PALETTE.shield
-                  );
+                  spawnFloatingText(cx, cy, `ABSORVIDO`, COLOR_PALETTE.shield);
                 } else {
                   dmgToHp = rawDmg - currentShield;
                   currentShield = 0;
@@ -985,15 +1015,13 @@ const App: React.FC = () => {
                 }
               }
 
-              statsRef.current = { ...statsRef.current, health: currentHp, shield: currentShield };
-
+              statsRef.current = {
+                ...statsRef.current,
+                health: currentHp,
+                shield: currentShield,
+              };
             } else {
-              spawnFloatingText(
-                cx,
-                cy,
-                `ESQUIVA`,
-                "#ffffff"
-              );
+              spawnFloatingText(cx, cy, `ESQUIVA`, "#ffffff");
             }
 
             if (enemy.type !== "boss") {
@@ -1031,7 +1059,7 @@ const App: React.FC = () => {
               currentStats.damage * (isCrit ? currentStats.critFactor : 1);
 
             projectilesRef.current.push({
-              id: Math.random(),
+              id: nextId(),
               x: cx,
               y: cy,
               target: target, // O(1) Reference!
@@ -1050,7 +1078,7 @@ const App: React.FC = () => {
       projectilesRef.current.forEach((p) => {
         // O(1) Access - No find() needed!
         const target = p.target;
-        
+
         if (target && !target.isDead) {
           const dx = target.x - p.x;
           const dy = target.y - p.y;
@@ -1059,8 +1087,7 @@ const App: React.FC = () => {
 
           if (distSq < hitDist * hitDist) {
             const distFromCenter = Math.sqrt(
-              Math.pow(target.x - cx, 2) +
-                Math.pow(target.y - cy, 2)
+              Math.pow(target.x - cx, 2) + Math.pow(target.y - cy, 2)
             );
             const distanceBonus =
               1 + (distFromCenter / 10) * (currentStats.damagePerMeter / 100);
@@ -1153,7 +1180,7 @@ const App: React.FC = () => {
               e.isDead = true;
               const coinReward = 10 + gameState.wave * 5;
               const scoreReward = 10 * gameState.wave;
-              
+
               // Update Ref directly
               gameStateRef.current.cash += coinReward;
               gameStateRef.current.score += scoreReward;
