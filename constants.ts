@@ -191,8 +191,8 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     type: "attack",
     baseCost: 100,
     costMultiplier: 1.5,
-    baseValue: 5,
-    valuePerLevel: 1,
+    baseValue: 2,
+    valuePerLevel: 0.5,
     level: 0,
     unit: "%",
     description: "Chance de dano duplo",
@@ -204,7 +204,7 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     baseCost: 150,
     costMultiplier: 1.6,
     baseValue: 1.0,
-    valuePerLevel: 0.2,
+    valuePerLevel: 0.1,
     level: 0,
     unit: "x",
     description: "Multiplicador ao criticar",
@@ -328,9 +328,9 @@ export const UPGRADE_LIMITS: Record<string, { min?: number; max?: number }> = {
   // Range in pixels (do not exceed canvas size)
   range: { min: 50, max: 450 },
   // Crit chance: percentage 0-100
-  crit_chn: { min: 0, max: 100 },
+  crit_chn: { min: 0, max: 50 },
   // Crit factor multiplier
-  crit_fac: { min: 1.0, max: 5.0 },
+  crit_fac: { min: 1.0, max: 3.0 },
   // Multi shot: cap to renderer visual cap
   multi_shot: { min: 0, max: 12 },
   // Regen per second

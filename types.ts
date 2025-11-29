@@ -1,8 +1,7 @@
-
 export interface Upgrade {
   id: string;
   name: string;
-  type: 'attack' | 'defense' | 'utility';
+  type: "attack" | "defense" | "utility";
   baseCost: number;
   costMultiplier: number;
   baseValue: number;
@@ -35,7 +34,7 @@ export interface PlayerStats {
 export interface Skin {
   id: string;
   name: string;
-  type: 'hexagon' | 'triangle' | 'square' | 'star' | 'circle';
+  type: "hexagon" | "triangle" | "square" | "star" | "circle";
   color: string;
   price: number;
 }
@@ -56,7 +55,7 @@ export interface GameState {
   loginStreak?: number; // Sequência atual salva na nuvem
 }
 
-export type EnemyType = 'standard' | 'speedster' | 'tank' | 'boss';
+export type EnemyType = "standard" | "speedster" | "tank" | "boss";
 
 export interface Enemy {
   id: number;
@@ -104,4 +103,27 @@ export interface Particle {
   maxLife: number;
   color: string;
   size: number;
+}
+
+// --- COMPETITIVE/STATS SYSTEM ---
+export interface PlayerGlobalStats {
+  totalEnemiesKilled: number;
+  totalDamageDeal: number;
+  totalDamageTaken: number;
+  longestWaveReached: number;
+  totalPlaytime: number; // em segundos
+  prestigeLevel: number;
+  totalRuns: number;
+  lastSessionEndTime?: number; // timestamp
+}
+
+export interface GameSession {
+  sessionId: string;
+  timestamp: number; // when session started
+  finalWave: number;
+  finalScore: number;
+  totalKills: number;
+  totalDamage: number;
+  duration: number; // em segundos
+  survived: number; // seconds survived
 }

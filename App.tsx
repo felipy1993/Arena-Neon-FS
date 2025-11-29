@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import GameCanvas from "./components/GameCanvas";
 import UpgradePanel from "./components/UpgradePanel";
+import StatsPanel from "./components/StatsPanel";
+import Leaderboard from "./components/Leaderboard";
 import {
   GameState,
   PlayerStats,
@@ -10,6 +12,8 @@ import {
   Upgrade,
   Particle,
   EnemyType,
+  PlayerGlobalStats,
+  GameSession,
 } from "./types";
 import {
   INITIAL_UPGRADES,
@@ -59,6 +63,12 @@ import {
 import { audioSystem } from "./audio";
 import { nextId } from "./utils";
 import {
+  initializeGlobalStats,
+  updateGlobalStats,
+  calculatePrestigeLevel,
+  calculateCompetitiveScore,
+} from "./competitive";
+import {
   registerWithEmail,
   loginWithEmailOrUsername,
   logoutUser,
@@ -76,20 +86,28 @@ const App: React.FC = () => {
   const [highScore, setHighScore] = useState<number>(0);
 
   const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
-  const [gameState, setGameState] = useState<GameState>({
-    cash: 150,
-    gems: 0,
-    wave: 1,
-    waveProgress: 0,
-    gameSpeed: 1,
-    isGameOver: false,
-    isPaused: false,
-    score: 0,
-    isGameStarted: false,
-    selectedSkinId: "default",
-    ownedSkinIds: ["default"],
-    lastLoginDate: "",
-    loginStreak: 0,
+  const [gameState, setGameState] = useState<GameState>(() => {
+    // Restaurar score da sessão se existir (para hot reload)
+    const savedSessionScore = sessionStorage.getItem(
+      "neon_arena_session_score"
+    );
+    const sessionScore = savedSessionScore ? parseInt(savedSessionScore) : 0;
+
+    return {
+      cash: 150,
+      gems: 0,
+      wave: 1,
+      waveProgress: 0,
+      gameSpeed: 1,
+      isGameOver: false,
+      isPaused: false,
+      score: sessionScore,
+      isGameStarted: false,
+      selectedSkinId: "default",
+      ownedSkinIds: ["default"],
+      lastLoginDate: "",
+      loginStreak: 0,
+    };
   });
 
   const [showSkinModal, setShowSkinModal] = useState(false);
@@ -128,6 +146,16 @@ const App: React.FC = () => {
   // --- WAVE ENEMY TRACKING ---
   const [enemiesSpawnedThisWave, setEnemiesSpawnedThisWave] = useState(0);
   const [totalEnemiesThisWave, setTotalEnemiesThisWave] = useState(0);
+
+  // --- COMPETITIVE SYSTEM ---
+  const [globalStats, setGlobalStats] = useState<PlayerGlobalStats>(
+    initializeGlobalStats()
+  );
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [showStatsPanel, setShowStatsPanel] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const sessionStartTimeRef = useRef<number>(0);
+  const sessionEnemyKillsRef = useRef<number>(0);
 
   // --- FIREBASE AUTH LISTENER ---
   useEffect(() => {
@@ -187,6 +215,56 @@ const App: React.FC = () => {
     }
   }, [highScore]);
 
+  // --- PERSISTENCE: SAVE SESSION SCORE (for hot reload protection) ---
+  useEffect(() => {
+    if (gameState.score > 0 && gameState.isGameStarted) {
+      sessionStorage.setItem(
+        "neon_arena_session_score",
+        gameState.score.toString()
+      );
+    }
+  }, [gameState.score, gameState.isGameStarted]);
+
+  // --- COMPETITIVE: SAVE SESSION ON GAME OVER ---
+  useEffect(() => {
+    if (!gameState.isGameOver || !sessionStartTimeRef.current) return;
+
+    const duration = (Date.now() - sessionStartTimeRef.current) / 1000; // em segundos
+
+    // Cria a sessão
+    const newSession: GameSession = {
+      sessionId: `session_${Date.now()}`,
+      timestamp: sessionStartTimeRef.current,
+      finalWave: gameState.wave,
+      finalScore: gameState.score,
+      totalKills: sessionEnemyKillsRef.current,
+      totalDamage: 0, // TODO: rastrear em tempo real
+      duration: Math.floor(duration),
+      survived: Math.floor(duration),
+    };
+
+    // Atualiza stats globais
+    const updatedStats = updateGlobalStats(globalStats, newSession);
+    updatedStats.prestigeLevel = calculatePrestigeLevel(updatedStats);
+    setGlobalStats(updatedStats);
+
+    // Salva no Firebase se logado
+    if (currentUser) {
+      saveGameToCloud(
+        currentUser,
+        gameState,
+        upgrades,
+        playerName,
+        Math.max(highScore, gameState.score),
+        updatedStats,
+        [newSession]
+      );
+    }
+
+    // Limpa session storage
+    sessionStorage.removeItem("neon_arena_session_score");
+  }, [gameState.isGameOver]);
+
   // Auto-Save Interval (every 60s)
   useEffect(() => {
     if (!currentUser || !gameState.isGameStarted || gameState.isGameOver)
@@ -204,6 +282,23 @@ const App: React.FC = () => {
     upgrades,
   ]);
 
+  // --- LOAD LEADERBOARD PERIODICALLY ---
+  useEffect(() => {
+    if (!showLeaderboard) return;
+
+    const loadLeaderboardData = async () => {
+      // Simulated leaderboard (em produção, seria uma query Firestore real)
+      // Para agora, apenas mostra dados vazios até implementarmos a query
+      // TODO: Implementar query real ao Firestore com ordenação por highScore
+      setLeaderboard([]);
+    };
+
+    loadLeaderboardData();
+    const interval = setInterval(loadLeaderboardData, 30000); // Atualiza a cada 30s
+
+    return () => clearInterval(interval);
+  }, [showLeaderboard]);
+
   const handleCloudSave = async () => {
     if (!currentUser) return;
     setCloudStatus("saving");
@@ -212,7 +307,8 @@ const App: React.FC = () => {
       gameState,
       upgrades,
       playerName,
-      highScore
+      highScore,
+      globalStats
     );
     setCloudStatus(success ? "saved" : "error");
     setTimeout(() => setCloudStatus("idle"), 3000);
@@ -331,9 +427,19 @@ const App: React.FC = () => {
     setPlayerName(data.playerName || "JOGADOR");
     setTempName(data.playerName || "JOGADOR");
     setHighScore(data.highScore || 0);
-    setUpgrades(
-      Array.isArray(data.upgrades) ? data.upgrades : INITIAL_UPGRADES
-    );
+
+    // Sanitize upgrades: ensure crit_chn and crit_fac start at level 0 if not purchased
+    const sanitizedUpgrades = Array.isArray(data.upgrades)
+      ? data.upgrades.map((u) => {
+          // Reset crit_chn and crit_fac to level 0 to prevent over-leveling
+          if ((u.id === "crit_chn" || u.id === "crit_fac") && u.level > 0) {
+            return { ...u, level: 0 };
+          }
+          return u;
+        })
+      : INITIAL_UPGRADES;
+
+    setUpgrades(sanitizedUpgrades);
     setGameState((prev) => ({
       ...prev,
       cash: data.cash || 150,
@@ -346,11 +452,13 @@ const App: React.FC = () => {
       lastLoginDate: data.lastLoginDate || "",
       loginStreak: data.loginStreak || 0,
     }));
-    setStats(
-      calculateStats(
-        Array.isArray(data.upgrades) ? data.upgrades : INITIAL_UPGRADES
-      )
-    );
+
+    // Load global stats if available
+    if (data.globalStats) {
+      setGlobalStats(data.globalStats);
+    }
+
+    setStats(calculateStats(sanitizedUpgrades));
   };
 
   const calculateStats = (
@@ -574,6 +682,10 @@ const App: React.FC = () => {
       "JOGADOR";
     setPlayerName(nameToUse);
 
+    // --- SESSION TRACKING ---
+    sessionStartTimeRef.current = Date.now();
+    sessionEnemyKillsRef.current = 0;
+
     // --- DAILY REWARD LOGIC ---
     const savedDate = gameState.lastLoginDate;
     const savedStreak = gameState.loginStreak || 0;
@@ -649,6 +761,8 @@ const App: React.FC = () => {
 
   const returnToMainMenu = () => {
     if (currentUser) handleCloudSave();
+    // Clear session score when returning to main menu
+    sessionStorage.removeItem("neon_arena_session_score");
     setGameState((prev) => ({
       ...prev,
       isGameStarted: false,
@@ -662,6 +776,9 @@ const App: React.FC = () => {
   };
 
   const resetGame = async () => {
+    // Clear session score when resetting
+    sessionStorage.removeItem("neon_arena_session_score");
+
     // Reset all game state to initial values
     const resetState = {
       cash: 150,
@@ -1110,6 +1227,9 @@ const App: React.FC = () => {
             if (target.hp <= 0) {
               target.isDead = true;
 
+              // --- COMPETITIVE: COUNT KILL ---
+              sessionEnemyKillsRef.current++;
+
               let coinMult = 1;
               let scoreMult = 1;
 
@@ -1526,11 +1646,29 @@ const App: React.FC = () => {
 
               <button
                 onClick={startGame}
-                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-5 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.3)] flex items-center justify-center gap-3 transition-all active:scale-95 group font-orbitron text-lg mb-6"
+                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-5 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.3)] flex items-center justify-center gap-3 transition-all active:scale-95 group font-orbitron text-lg mb-4"
               >
                 <PlayCircle size={28} className="group-hover:animate-pulse" />
                 INICIAR MISSÃO
               </button>
+
+              {/* STATS & LEADERBOARD BUTTONS */}
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <button
+                  onClick={() => setShowStatsPanel(!showStatsPanel)}
+                  className="w-full bg-purple-900/40 hover:bg-purple-900/60 border border-purple-500/30 text-purple-400 hover:text-purple-300 rounded py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+                  title="Ver suas estatísticas"
+                >
+                  <Trophy size={16} /> STATS
+                </button>
+                <button
+                  onClick={() => setShowLeaderboard(!showLeaderboard)}
+                  className="w-full bg-yellow-900/40 hover:bg-yellow-900/60 border border-yellow-500/30 text-yellow-400 hover:text-yellow-300 rounded py-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+                  title="Ver ranking global"
+                >
+                  <Trophy size={16} /> RANKING
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1661,6 +1799,54 @@ service cloud.firestore {
             >
               COLETAR
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* STATS PANEL MODAL */}
+      {showStatsPanel && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto p-4 overflow-y-auto">
+          <div className="relative">
+            <button
+              onClick={() => setShowStatsPanel(false)}
+              className="absolute -top-12 right-0 text-gray-400 hover:text-white transition-colors"
+              title="Fechar"
+            >
+              <X size={32} />
+            </button>
+            <StatsPanel
+              stats={globalStats}
+              highScore={highScore}
+              playerName={playerName}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* LEADERBOARD MODAL */}
+      {showLeaderboard && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto p-4 overflow-y-auto">
+          <div className="relative w-full">
+            <button
+              onClick={() => setShowLeaderboard(false)}
+              className="absolute -top-12 right-0 text-gray-400 hover:text-white transition-colors"
+              title="Fechar"
+            >
+              <X size={32} />
+            </button>
+            <Leaderboard
+              entries={leaderboard.map((entry, idx) => ({
+                rank: idx + 1,
+                playerName: entry.playerName || "Anônimo",
+                highScore: entry.highScore || 0,
+                prestigeLevel: entry.prestigeLevel || 0,
+                lastUpdate:
+                  new Date(entry.lastUpdate?.toDate?.()).toLocaleDateString(
+                    "pt-BR"
+                  ) || "N/A",
+              }))}
+              isLoading={false}
+            />
           </div>
         </div>
       )}
