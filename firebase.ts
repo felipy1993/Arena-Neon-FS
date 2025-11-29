@@ -16,6 +16,11 @@ import {
   getDoc,
   serverTimestamp,
   Firestore,
+  collection,
+  query,
+  orderBy,
+  limit,
+  getDocs,
 } from "firebase/firestore";
 import {
   GameState,
@@ -294,11 +299,27 @@ export const loadLeaderboard = async (limit: number = 50): Promise<any[]> => {
   if (!db) return [];
 
   try {
-    // Nota: Este é um exemplo básico. Para ordenar e limitar corretamente,
-    // você precisa usar Firestore queries em App.tsx
-    return [];
+    // Query a coleção de leaderboard, ordenada por highScore (descendente), limitada a N resultados
+    const q = query(
+      collection(db, "leaderboard"),
+      orderBy("highScore", "desc"),
+      limit(limit)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const results: any[] = [];
+
+    querySnapshot.forEach((doc) => {
+      results.push({
+        id: doc.id,
+        ...doc.data(),
+      });
+    });
+
+    console.log(`✅ Leaderboard carregado com ${results.length} entradas`);
+    return results;
   } catch (e) {
-    console.error("Erro ao carregar leaderboard:", e);
+    console.error("❌ Erro ao carregar leaderboard:", e);
     return [];
   }
 };

@@ -3,17 +3,20 @@
 ## ✅ O QUE FOI IMPLEMENTADO
 
 ### 1. **Tipos TypeScript** (`types.ts`)
+
 - ✅ `PlayerGlobalStats` — Rastreia kills, dano, playtime, prestige
 - ✅ `GameSession` — Registra cada sessão com timestamp, wave final, score, kills
 - Estrutura pronta para expansão (achievements, badges, etc)
 
 ### 2. **Firebase Atualizado** (`firebase.ts`)
+
 - ✅ `CloudSaveData` agora inclui `globalStats` e `recentSessions`
 - ✅ `saveGameToCloud()` salva todos os dados competitivos
 - ✅ `updateLeaderboard()` registra entrada no ranking global
 - ✅ `loadLeaderboard()` carrega top players (preparado para query real)
 
 ### 3. **Sistema Competitivo** (`competitive.ts`)
+
 - ✅ `initializeGlobalStats()` — Inicia stats vazias
 - ✅ `updateGlobalStats()` — Atualiza stats após cada sessão
 - ✅ `calculatePrestigeLevel()` — Calcula nível baseado em dedicação
@@ -22,13 +25,16 @@
 - ✅ `getPrestigeBadge()` — Visual de prestígio (🆕 → ⭐⭐⭐ → 👑 → 🔥)
 
 ### 4. **UI Components**
+
 #### `components/StatsPanel.tsx`
+
 - ✅ Exibe estatísticas globais do jogador
 - ✅ Mostra: High Score, Inimigos Derrotados, Prestige, Playtime
 - ✅ Design visual com borders coloridos
 - ✅ Informações sobre próximo nível de prestige
 
 #### `components/Leaderboard.tsx`
+
 - ✅ Top 50 players com ranking visual
 - ✅ Medalhas: 🥇🥈🥉 para top 3
 - ✅ Mostra score e prestige de cada jogador
@@ -36,6 +42,7 @@
 - ✅ Status de carregamento
 
 ### 5. **Integração no App.tsx**
+
 - ✅ Novos states: `globalStats`, `leaderboard`, `showStatsPanel`, `showLeaderboard`
 - ✅ Refs para rastrear sessão: `sessionStartTimeRef`, `sessionEnemyKillsRef`
 - ✅ Botões no menu principal: STATS e RANKING
@@ -49,6 +56,7 @@
 ## 🎯 COMO FUNCIONA
 
 ### Fluxo de Competição:
+
 ```
 Jogador inicia partida
     ↓
@@ -76,6 +84,7 @@ Leaderboard atualizado automaticamente
 ```
 
 ### Prestige System:
+
 ```
 1 Prestige = 100 kills OU 50 ondas OU 2h playtime
 Badges visuais mostram nível:
@@ -117,10 +126,12 @@ leaderboard/{uid}/
 ## 🎮 COMO JOGAR COMPETITIVAMENTE
 
 1. **Clique em "STATS"** para ver seu progresso
+
    - Veja kills totais, prestige level, playtime
    - Acompanhe progresso até próximo prestige
 
 2. **Clique em "RANKING"** para comparar com outros
+
    - Veja top 50 players do mundo
    - Compita por pontuação alta
 
@@ -135,18 +146,21 @@ leaderboard/{uid}/
 ## 🚀 PRÓXIMAS FEATURES (TODO)
 
 ### Priority ALTA:
+
 - [ ] Implementar query real do Firestore para leaderboard (ordenado por highScore)
 - [ ] Rastrear totalDamageDeal durante gameplay
 - [ ] Carregar leaderboard ao abrir modal (não apenas simulado)
 - [ ] Adicionar Weekly Challenge mode (mesma seed para todos)
 
 ### Priority MÉDIA:
+
 - [ ] Prestige Reset (recomeçar com +5% stats base)
 - [ ] Achievements/Badges desbloqueáveis
 - [ ] Histórico de sessões (últimas 10)
 - [ ] Gráficos de progresso
 
 ### Priority BAIXA:
+
 - [ ] Replay de melhor run
 - [ ] Modo multijogador local
 - [ ] Trading entre jogadores
@@ -169,7 +183,7 @@ const loadLeaderboardData = async () => {
     limit(50)
   );
   const snap = await getDocs(q);
-  const leaders = snap.docs.map(doc => doc.data());
+  const leaders = snap.docs.map((doc) => doc.data());
   setLeaderboard(leaders);
 };
 ```

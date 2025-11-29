@@ -74,6 +74,7 @@ import {
   logoutUser,
   saveGameToCloud,
   loadGameFromCloud,
+  loadLeaderboard,
   auth,
   CloudSaveData,
 } from "./firebase";
@@ -85,7 +86,18 @@ const App: React.FC = () => {
   const [tempName, setTempName] = useState<string>("");
   const [highScore, setHighScore] = useState<number>(0);
 
-  const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
+  const [upgrades, setUpgrades] = useState<Upgrade[]>(() => {
+    // Tenta carregar upgrades do localStorage se não está logado
+    const saved = localStorage.getItem("neon_arena_upgrades");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.warn("Erro ao carregar upgrades:", e);
+      }
+    }
+    return INITIAL_UPGRADES;
+  });
   const [gameState, setGameState] = useState<GameState>(() => {
     // Restaurar score da sessão se existir (para hot reload)
     const savedSessionScore = sessionStorage.getItem(
@@ -93,9 +105,13 @@ const App: React.FC = () => {
     );
     const sessionScore = savedSessionScore ? parseInt(savedSessionScore) : 0;
 
+    // Tentar carregar estado salvo do localStorage
+    const savedState = localStorage.getItem("neon_arena_gamestate");
+    const parsedState = savedState ? JSON.parse(savedState) : {};
+
     return {
-      cash: 150,
-      gems: 0,
+      cash: parsedState.cash || 150,
+      gems: parsedState.gems || 0,
       wave: 1,
       waveProgress: 0,
       gameSpeed: 1,
@@ -103,10 +119,10 @@ const App: React.FC = () => {
       isPaused: false,
       score: sessionScore,
       isGameStarted: false,
-      selectedSkinId: "default",
-      ownedSkinIds: ["default"],
-      lastLoginDate: "",
-      loginStreak: 0,
+      selectedSkinId: parsedState.selectedSkinId || "default",
+      ownedSkinIds: parsedState.ownedSkinIds || ["default"],
+      lastLoginDate: parsedState.lastLoginDate || "",
+      loginStreak: parsedState.loginStreak || 0,
     };
   });
 
@@ -120,9 +136,9 @@ const App: React.FC = () => {
   >("idle");
 
   // UI State for Start Screen
-  const [authMode, setAuthMode] = useState<"hidden" | "login" | "register">(
-    "login"
-  );
+  const [authMode, setAuthMode] = useState<
+    "hidden" | "login" | "register" | "loading"
+  >("loading");
 
   // Auth Form State
   const [emailOrUser, setEmailOrUser] = useState("");
@@ -185,18 +201,20 @@ const App: React.FC = () => {
             }
             setAuthMode("hidden"); // Vai para o menu "Logado"
           } else {
-            // User logged out
+            // User logged out - mas checar se há dados locais salvos
             setTempName("");
             setHighScore(0);
             setAuthMode("login"); // Volta para a tela de login
           }
         } catch (error) {
           console.error("❌ Erro no auth state changed:", error);
+          setAuthMode("login");
         }
       });
       return () => unsubscribe();
     } catch (error) {
       console.error("❌ Erro ao configurar auth listener:", error);
+      setAuthMode("login");
     }
   }, []);
 
@@ -214,6 +232,39 @@ const App: React.FC = () => {
       localStorage.setItem("neon_arena_highscore", highScore.toString());
     }
   }, [highScore]);
+
+  // --- PERSISTENCE: AUTO-SAVE UPGRADES ---
+  useEffect(() => {
+    if (upgrades && upgrades.length > 0) {
+      localStorage.setItem("neon_arena_upgrades", JSON.stringify(upgrades));
+      // Salva timestamp para comparação com nuvem
+      localStorage.setItem("neon_arena_upgrades_timestamp", Date.now().toString());
+    }
+  }, [upgrades]);
+
+  // --- PERSISTENCE: AUTO-SAVE GAME STATE (cash, gems, skins) ---
+  useEffect(() => {
+    if (!gameState.isGameStarted) {
+      // Salva estado quando não está jogando (menu)
+      const stateToSave = {
+        cash: gameState.cash,
+        gems: gameState.gems,
+        selectedSkinId: gameState.selectedSkinId,
+        ownedSkinIds: gameState.ownedSkinIds,
+        lastLoginDate: gameState.lastLoginDate,
+        loginStreak: gameState.loginStreak,
+      };
+      localStorage.setItem("neon_arena_gamestate", JSON.stringify(stateToSave));
+    }
+  }, [
+    gameState.cash,
+    gameState.gems,
+    gameState.selectedSkinId,
+    gameState.ownedSkinIds,
+    gameState.lastLoginDate,
+    gameState.loginStreak,
+    gameState.isGameStarted,
+  ]);
 
   // --- PERSISTENCE: SAVE SESSION SCORE (for hot reload protection) ---
   useEffect(() => {
@@ -287,10 +338,13 @@ const App: React.FC = () => {
     if (!showLeaderboard) return;
 
     const loadLeaderboardData = async () => {
-      // Simulated leaderboard (em produção, seria uma query Firestore real)
-      // Para agora, apenas mostra dados vazios até implementarmos a query
-      // TODO: Implementar query real ao Firestore com ordenação por highScore
-      setLeaderboard([]);
+      try {
+        const data = await loadLeaderboard(50);
+        setLeaderboard(data);
+      } catch (error) {
+        console.error("Erro ao carregar leaderboard:", error);
+        setLeaderboard([]);
+      }
     };
 
     loadLeaderboardData();
@@ -418,6 +472,40 @@ const App: React.FC = () => {
     }
   };
 
+  // --- SMART MERGE: Compara local vs cloud e usa a versão mais recente ---
+  const smartMergeUpgrades = (cloudData: CloudSaveData): Upgrade[] => {
+    // Pega upgrades locais e timestamp
+    const localUpgradesJson = localStorage.getItem("neon_arena_upgrades");
+    const localTimestamp = localStorage.getItem("neon_arena_upgrades_timestamp");
+    
+    if (!localUpgradesJson || !localTimestamp) {
+      // Sem dados locais, usa nuvem
+      console.log("📥 Nenhum upgrade local, usando nuvem");
+      return cloudData.upgrades || INITIAL_UPGRADES;
+    }
+
+    try {
+      const localUpgrades = JSON.parse(localUpgradesJson);
+      const localTime = parseInt(localTimestamp);
+      
+      // Tenta extrair timestamp da nuvem (se disponível)
+      const cloudTime = cloudData.lastSaved?.toMillis?.() || 0;
+      
+      if (localTime > cloudTime) {
+        // Local é mais recente, mantém local
+        console.log(`🔄 Upgrade local é mais recente (${new Date(localTime).toLocaleTimeString()}) vs nuvem (${new Date(cloudTime).toLocaleTimeString()})`);
+        return localUpgrades;
+      } else {
+        // Nuvem é mais recente ou igual, usa nuvem
+        console.log(`📥 Nuvem é mais recente ou não há dados locais`);
+        return cloudData.upgrades || INITIAL_UPGRADES;
+      }
+    } catch (e) {
+      console.error("❌ Erro ao fazer merge de upgrades:", e);
+      return cloudData.upgrades || INITIAL_UPGRADES;
+    }
+  };
+
   const applyCloudData = (data: CloudSaveData) => {
     if (!data) {
       console.error("❌ Dados da nuvem inválidos");
@@ -428,9 +516,12 @@ const App: React.FC = () => {
     setTempName(data.playerName || "JOGADOR");
     setHighScore(data.highScore || 0);
 
+    // Smart merge: usa a versão mais recente (local vs nuvem)
+    const mergedUpgrades = smartMergeUpgrades(data);
+
     // Sanitize upgrades: ensure crit_chn and crit_fac start at level 0 if not purchased
-    const sanitizedUpgrades = Array.isArray(data.upgrades)
-      ? data.upgrades.map((u) => {
+    const sanitizedUpgrades = Array.isArray(mergedUpgrades)
+      ? mergedUpgrades.map((u) => {
           // Reset crit_chn and crit_fac to level 0 to prevent over-leveling
           if ((u.id === "crit_chn" || u.id === "crit_fac") && u.level > 0) {
             return { ...u, level: 0 };
@@ -1485,7 +1576,22 @@ const App: React.FC = () => {
           </div>
 
           {/* --- AUTH MODE IS NOW DEFAULT --- */}
-          {authMode !== "hidden" ? (
+          {authMode === "loading" ? (
+            <div className="w-full animate-in fade-in duration-300 flex flex-col items-center gap-4 py-8">
+              <div className="relative w-16 h-16">
+                <div className="absolute inset-0 border-4 border-cyan-500/30 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-transparent border-t-cyan-400 border-r-cyan-400 rounded-full animate-spin"></div>
+              </div>
+              <div className="text-center">
+                <p className="text-cyan-400 font-orbitron font-bold uppercase text-sm">
+                  Autenticando...
+                </p>
+                <p className="text-gray-400 text-xs mt-2">
+                  Conectando ao sistema
+                </p>
+              </div>
+            </div>
+          ) : authMode !== "hidden" ? (
             <div className="w-full animate-in fade-in slide-in-from-right duration-300">
               <div className="flex items-center gap-2 mb-4 justify-center">
                 <span className="text-white font-bold font-orbitron uppercase text-sm">
