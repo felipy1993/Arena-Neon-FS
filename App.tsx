@@ -75,6 +75,7 @@ import {
   saveGameToCloud,
   loadGameFromCloud,
   loadLeaderboard,
+  updateLeaderboard,
   auth,
   CloudSaveData,
 } from "./firebase";
@@ -317,6 +318,14 @@ const App: React.FC = () => {
         Math.max(highScore, gameState.score),
         updatedStats,
         [newSession]
+      );
+      
+      // Atualiza Leaderboard Global
+      updateLeaderboard(
+        currentUser,
+        playerName,
+        Math.max(highScore, gameState.score),
+        updatedStats.prestigeLevel
       );
     }
 
