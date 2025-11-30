@@ -203,7 +203,7 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     type: "attack",
     baseCost: 150,
     costMultiplier: 1.6,
-    baseValue: 1.0,
+    baseValue: 1.1,
     valuePerLevel: 0.1,
     level: 0,
     unit: "x",

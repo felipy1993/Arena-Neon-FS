@@ -1477,15 +1477,27 @@ const App: React.FC = () => {
         }
       }
 
-      enemiesRef.current = enemiesRef.current.filter((e) => !e.isDead);
-      projectilesRef.current = projectilesRef.current.filter(
-        (p) => p.damage > 0
-      );
+      // OPTIMIZED CLEANUP: Only filter if necessary to save GC
+      if (enemiesRef.current.some((e) => e.isDead)) {
+        enemiesRef.current = enemiesRef.current.filter((e) => !e.isDead);
+      }
+      
+      if (projectilesRef.current.some((p) => p.damage === 0)) {
+        projectilesRef.current = projectilesRef.current.filter(
+          (p) => p.damage > 0
+        );
+      }
+
+      // Update Texts
       textsRef.current.forEach((t) => {
         t.y += t.vy;
         t.life--;
       });
-      textsRef.current = textsRef.current.filter((t) => t.life > 0);
+      if (textsRef.current.some((t) => t.life <= 0)) {
+        textsRef.current = textsRef.current.filter((t) => t.life > 0);
+      }
+      
+      // Update Particles
       particlesRef.current.forEach((p) => {
         p.x += p.vx;
         p.y += p.vy;
@@ -1493,7 +1505,9 @@ const App: React.FC = () => {
         p.vx *= 0.95;
         p.vy *= 0.95;
       });
-      particlesRef.current = particlesRef.current.filter((p) => p.life > 0);
+      if (particlesRef.current.some((p) => p.life <= 0)) {
+        particlesRef.current = particlesRef.current.filter((p) => p.life > 0);
+      }
 
       animationFrameId = requestAnimationFrame(loop);
     };
@@ -2008,9 +2022,12 @@ service cloud.firestore {
                 highScore: entry.highScore || 0,
                 prestigeLevel: entry.prestigeLevel || 0,
                 lastUpdate:
-                  new Date(entry.lastUpdate?.toDate?.()).toLocaleDateString(
-                    "pt-BR"
-                  ) || "N/A",
+                  entry.lastUpdate &&
+                  typeof entry.lastUpdate.toDate === "function"
+                    ? new Date(entry.lastUpdate.toDate()).toLocaleDateString(
+                        "pt-BR"
+                      )
+                    : "N/A",
               }))}
               isLoading={false}
             />
