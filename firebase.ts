@@ -312,13 +312,19 @@ export const loadLeaderboard = async (
     const results: any[] = [];
 
     querySnapshot.forEach((doc) => {
+      const data = doc.data();
       results.push({
         id: doc.id,
-        ...doc.data(),
+        uid: data.uid,
+        playerName: data.playerName,
+        highScore: data.highScore || 0,
+        prestigeLevel: data.prestigeLevel || 0,
+        lastUpdate: data.lastUpdate,
       });
     });
 
     console.log(`✅ Leaderboard carregado com ${results.length} entradas`);
+    console.log("📊 Top 3:", results.slice(0, 3));
     return results;
   } catch (e) {
     console.error("❌ Erro ao carregar leaderboard:", e);

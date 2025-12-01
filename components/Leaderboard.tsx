@@ -83,7 +83,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({
             <tbody>
               {entries.map((entry, idx) => (
                 <tr
-                  key={idx}
+                  key={entry.playerName + idx}
                   className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition ${
                     currentPlayerUid === entry.playerName
                       ? "bg-cyan-900/20 border-l-4 border-l-cyan-400"

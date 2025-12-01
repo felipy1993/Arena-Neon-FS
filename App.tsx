@@ -169,6 +169,7 @@ const App: React.FC = () => {
     initializeGlobalStats()
   );
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const sessionStartTimeRef = useRef<number>(0);
@@ -319,7 +320,7 @@ const App: React.FC = () => {
         updatedStats,
         [newSession]
       );
-      
+
       // Atualiza Leaderboard Global
       updateLeaderboard(
         currentUser,
@@ -356,11 +357,29 @@ const App: React.FC = () => {
 
     const loadLeaderboardData = async () => {
       try {
+        setLeaderboardLoading(true);
+        console.log("🔄 Carregando leaderboard...");
         const data = await loadLeaderboard(50);
-        setLeaderboard(data);
+
+        if (!Array.isArray(data)) {
+          console.error("❌ Leaderboard não é um array:", data);
+          setLeaderboard([]);
+          setLeaderboardLoading(false);
+          return;
+        }
+
+        // Validar e filtrar dados
+        const validData = data.filter(
+          (entry) => entry.playerName && typeof entry.highScore === "number"
+        );
+
+        console.log(`✅ ${validData.length} jogadores carregados`);
+        setLeaderboard(validData);
       } catch (error) {
-        console.error("Erro ao carregar leaderboard:", error);
+        console.error("❌ Erro ao carregar leaderboard:", error);
         setLeaderboard([]);
+      } finally {
+        setLeaderboardLoading(false);
       }
     };
 
@@ -1481,7 +1500,7 @@ const App: React.FC = () => {
       if (enemiesRef.current.some((e) => e.isDead)) {
         enemiesRef.current = enemiesRef.current.filter((e) => !e.isDead);
       }
-      
+
       if (projectilesRef.current.some((p) => p.damage === 0)) {
         projectilesRef.current = projectilesRef.current.filter(
           (p) => p.damage > 0
@@ -1496,7 +1515,7 @@ const App: React.FC = () => {
       if (textsRef.current.some((t) => t.life <= 0)) {
         textsRef.current = textsRef.current.filter((t) => t.life > 0);
       }
-      
+
       // Update Particles
       particlesRef.current.forEach((p) => {
         p.x += p.vx;
@@ -2016,20 +2035,25 @@ service cloud.firestore {
               <X size={32} />
             </button>
             <Leaderboard
-              entries={leaderboard.map((entry, idx) => ({
-                rank: idx + 1,
-                playerName: entry.playerName || "Anônimo",
-                highScore: entry.highScore || 0,
-                prestigeLevel: entry.prestigeLevel || 0,
-                lastUpdate:
-                  entry.lastUpdate &&
-                  typeof entry.lastUpdate.toDate === "function"
-                    ? new Date(entry.lastUpdate.toDate()).toLocaleDateString(
-                        "pt-BR"
-                      )
-                    : "N/A",
-              }))}
-              isLoading={false}
+              entries={leaderboard
+                .filter(
+                  (entry) => entry.playerName && entry.highScore !== undefined
+                )
+                .map((entry, idx) => ({
+                  rank: idx + 1,
+                  playerName: entry.playerName.toUpperCase(),
+                  highScore: entry.highScore || 0,
+                  prestigeLevel: entry.prestigeLevel || 0,
+                  lastUpdate:
+                    entry.lastUpdate &&
+                    typeof entry.lastUpdate.toDate === "function"
+                      ? new Date(entry.lastUpdate.toDate()).toLocaleDateString(
+                          "pt-BR"
+                        )
+                      : "N/A",
+                }))}
+              currentPlayerUid={playerName}
+              isLoading={leaderboardLoading}
             />
           </div>
         </div>
