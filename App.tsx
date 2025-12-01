@@ -63,93 +63,52 @@ import {
 import { audioSystem } from "./audio";
 import { nextId } from "./utils";
 import {
-  initializeGlobalStats,
-  updateGlobalStats,
-  calculatePrestigeLevel,
-  calculateCompetitiveScore,
-} from "./competitive";
-import {
-  registerWithEmail,
-  loginWithEmailOrUsername,
-  logoutUser,
-  saveGameToCloud,
-  loadGameFromCloud,
-  loadLeaderboard,
-  updateLeaderboard,
-  auth,
-  CloudSaveData,
+  updateLeaderboard, // Keep this as it is used in game over logic
+  saveGameToCloud, // Needed for resetGame
 } from "./firebase";
-import { User } from "firebase/auth";
+import { useAuth } from "./src/hooks/useAuth";
+import { useGameState } from "./src/hooks/useGameState";
+import { useLeaderboard } from "./src/hooks/useLeaderboard";
 
 const App: React.FC = () => {
   // --- Persistent State ---
-  const [playerName, setPlayerName] = useState<string>("");
+  // --- Hooks ---
+  const {
+    currentUser,
+    authMode,
+    authError,
+    isSyncing,
+    setAuthMode,
+    setAuthError,
+    handleAuthAction: authHookAction,
+    handleLogout,
+  } = useAuth();
+
+  const {
+    gameState,
+    highScore,
+    playerName,
+    upgrades,
+    globalStats,
+    cloudStatus,
+    setGameState,
+    setHighScore,
+    setPlayerName,
+    setUpgrades,
+    setGlobalStats,
+    handleCloudSave,
+  } = useGameState(currentUser);
+
+  // --- Local UI State ---
   const [tempName, setTempName] = useState<string>("");
-  const [highScore, setHighScore] = useState<number>(0);
-
-  const [upgrades, setUpgrades] = useState<Upgrade[]>(() => {
-    // Tenta carregar upgrades do localStorage se não está logado
-    const saved = localStorage.getItem("neon_arena_upgrades");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.warn("Erro ao carregar upgrades:", e);
-      }
-    }
-    return INITIAL_UPGRADES;
-  });
-  const [gameState, setGameState] = useState<GameState>(() => {
-    // Restaurar score da sessão se existir (para hot reload)
-    const savedSessionScore = sessionStorage.getItem(
-      "neon_arena_session_score"
-    );
-    const sessionScore = savedSessionScore ? parseInt(savedSessionScore) : 0;
-
-    // Tentar carregar estado salvo do localStorage
-    const savedState = localStorage.getItem("neon_arena_gamestate");
-    const parsedState = savedState ? JSON.parse(savedState) : {};
-
-    return {
-      cash: parsedState.cash || 150,
-      gems: parsedState.gems || 0,
-      wave: 1,
-      waveProgress: 0,
-      gameSpeed: 1,
-      isGameOver: false,
-      isPaused: false,
-      score: sessionScore,
-      isGameStarted: false,
-      selectedSkinId: parsedState.selectedSkinId || "default",
-      ownedSkinIds: parsedState.ownedSkinIds || ["default"],
-      lastLoginDate: parsedState.lastLoginDate || "",
-      loginStreak: parsedState.loginStreak || 0,
-    };
-  });
-
   const [showSkinModal, setShowSkinModal] = useState(false);
-
-  // --- CLOUD / FIREBASE STATE ---
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<
-    "idle" | "saving" | "error" | "saved"
-  >("idle");
-
-  // UI State for Start Screen
-  const [authMode, setAuthMode] = useState<
-    "hidden" | "login" | "register" | "loading"
-  >("loading");
-
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  
   // Auth Form State
   const [emailOrUser, setEmailOrUser] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regUser, setRegUser] = useState("");
   const [password, setPassword] = useState("");
-  const [authError, setAuthError] = useState("");
-
-  // Permission Error Helper
-  const [showRulesModal, setShowRulesModal] = useState(false);
 
   // Daily Reward State
   const [dailyRewardPopup, setDailyRewardPopup] = useState<{
@@ -164,472 +123,38 @@ const App: React.FC = () => {
   const [enemiesSpawnedThisWave, setEnemiesSpawnedThisWave] = useState(0);
   const [totalEnemiesThisWave, setTotalEnemiesThisWave] = useState(0);
 
-  // --- COMPETITIVE SYSTEM ---
-  const [globalStats, setGlobalStats] = useState<PlayerGlobalStats>(
-    initializeGlobalStats()
-  );
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  // --- COMPETITIVE SYSTEM UI ---
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  
+  const { leaderboard, isLoading: leaderboardLoading } = useLeaderboard(showLeaderboard);
+
   const sessionStartTimeRef = useRef<number>(0);
   const sessionEnemyKillsRef = useRef<number>(0);
 
-  // --- FIREBASE AUTH LISTENER ---
+  // Sync tempName with playerName when loaded
   useEffect(() => {
-    if (!auth) {
-      console.warn("⚠️ Auth não inicializado, pulando listener");
-      return;
+    if (playerName) {
+      setTempName(playerName);
     }
+  }, [playerName]);
 
-    try {
-      const unsubscribe = auth.onAuthStateChanged(async (user) => {
-        try {
-          setCurrentUser(user);
-          if (user) {
-            // If user logs in, try to load data
-            const cloudData = await loadGameFromCloud(user);
-            if (cloudData) {
-              setTempName(cloudData.playerName);
-              setHighScore((prev) => Math.max(prev, cloudData.highScore));
-              applyCloudData(cloudData); // Carrega o estado completo (incluindo datas de login)
-            } else {
-              // Novo usuário ou sem save
-              const fallbackName =
-                user.displayName ||
-                user.email?.split("@")[0].toUpperCase() ||
-                "OPERADOR";
-              setTempName(fallbackName);
-            }
-            setAuthMode("hidden"); // Vai para o menu "Logado"
-          } else {
-            // User logged out - mas checar se há dados locais salvos
-            setTempName("");
-            setHighScore(0);
-            setAuthMode("login"); // Volta para a tela de login
-          }
-        } catch (error) {
-          console.error("❌ Erro no auth state changed:", error);
-          setAuthMode("login");
-        }
-      });
-      return () => unsubscribe();
-    } catch (error) {
-      console.error("❌ Erro ao configurar auth listener:", error);
-      setAuthMode("login");
-    }
-  }, []);
-
-  // --- PERSISTENCE: INITIAL LOAD (LOCAL) ---
-  useEffect(() => {
-    const savedScore = localStorage.getItem("neon_arena_highscore");
-    if (savedScore) {
-      setHighScore(parseInt(savedScore));
-    }
-  }, []);
-
-  // --- PERSISTENCE: AUTO-SAVE HIGHSCORE ---
-  useEffect(() => {
-    if (highScore > 0) {
-      localStorage.setItem("neon_arena_highscore", highScore.toString());
-    }
-  }, [highScore]);
-
-  // --- PERSISTENCE: AUTO-SAVE UPGRADES ---
-  useEffect(() => {
-    if (upgrades && upgrades.length > 0) {
-      localStorage.setItem("neon_arena_upgrades", JSON.stringify(upgrades));
-      // Salva timestamp para comparação com nuvem
-      localStorage.setItem(
-        "neon_arena_upgrades_timestamp",
-        Date.now().toString()
-      );
-    }
-  }, [upgrades]);
-
-  // --- PERSISTENCE: AUTO-SAVE GAME STATE (cash, gems, skins) ---
-  useEffect(() => {
-    if (!gameState.isGameStarted) {
-      // Salva estado quando não está jogando (menu)
-      const stateToSave = {
-        cash: gameState.cash,
-        gems: gameState.gems,
-        selectedSkinId: gameState.selectedSkinId,
-        ownedSkinIds: gameState.ownedSkinIds,
-        lastLoginDate: gameState.lastLoginDate,
-        loginStreak: gameState.loginStreak,
-      };
-      localStorage.setItem("neon_arena_gamestate", JSON.stringify(stateToSave));
-      // Salva timestamp para comparação com nuvem
-      localStorage.setItem(
-        "neon_arena_gamestate_timestamp",
-        Date.now().toString()
-      );
-    }
-  }, [
-    gameState.cash,
-    gameState.gems,
-    gameState.selectedSkinId,
-    gameState.ownedSkinIds,
-    gameState.lastLoginDate,
-    gameState.loginStreak,
-    gameState.isGameStarted,
-  ]);
-
-  // --- PERSISTENCE: SAVE SESSION SCORE (for hot reload protection) ---
-  useEffect(() => {
-    if (gameState.score > 0 && gameState.isGameStarted) {
-      sessionStorage.setItem(
-        "neon_arena_session_score",
-        gameState.score.toString()
-      );
-    }
-  }, [gameState.score, gameState.isGameStarted]);
-
-  // --- COMPETITIVE: SAVE SESSION ON GAME OVER ---
-  useEffect(() => {
-    if (!gameState.isGameOver || !sessionStartTimeRef.current) return;
-
-    const duration = (Date.now() - sessionStartTimeRef.current) / 1000; // em segundos
-
-    // Cria a sessão
-    const newSession: GameSession = {
-      sessionId: `session_${Date.now()}`,
-      timestamp: sessionStartTimeRef.current,
-      finalWave: gameState.wave,
-      finalScore: gameState.score,
-      totalKills: sessionEnemyKillsRef.current,
-      totalDamage: 0, // TODO: rastrear em tempo real
-      duration: Math.floor(duration),
-      survived: Math.floor(duration),
-    };
-
-    // Atualiza stats globais
-    const updatedStats = updateGlobalStats(globalStats, newSession);
-    updatedStats.prestigeLevel = calculatePrestigeLevel(updatedStats);
-    setGlobalStats(updatedStats);
-
-    // Salva no Firebase se logado
-    if (currentUser) {
-      saveGameToCloud(
-        currentUser,
-        gameState,
-        upgrades,
-        playerName,
-        Math.max(highScore, gameState.score),
-        updatedStats,
-        [newSession]
-      );
-
-      // Atualiza Leaderboard Global
-      updateLeaderboard(
-        currentUser,
-        playerName,
-        Math.max(highScore, gameState.score),
-        updatedStats.prestigeLevel
-      );
-    }
-
-    // Limpa session storage
-    sessionStorage.removeItem("neon_arena_session_score");
-  }, [gameState.isGameOver]);
-
-  // Auto-Save Interval (every 60s)
-  useEffect(() => {
-    if (!currentUser || !gameState.isGameStarted || gameState.isGameOver)
-      return;
-
-    const interval = setInterval(() => {
-      handleCloudSave();
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [
-    currentUser,
-    gameState.isGameStarted,
-    gameState.isGameOver,
-    gameState,
-    upgrades,
-  ]);
-
-  // --- LOAD LEADERBOARD PERIODICALLY ---
-  useEffect(() => {
-    if (!showLeaderboard) return;
-
-    const loadLeaderboardData = async () => {
-      try {
-        setLeaderboardLoading(true);
-        console.log("🔄 Carregando leaderboard...");
-        const data = await loadLeaderboard(50);
-
-        if (!Array.isArray(data)) {
-          console.error("❌ Leaderboard não é um array:", data);
-          setLeaderboard([]);
-          setLeaderboardLoading(false);
-          return;
-        }
-
-        // Validar e filtrar dados
-        const validData = data.filter(
-          (entry) => entry.playerName && typeof entry.highScore === "number"
-        );
-
-        console.log(`✅ ${validData.length} jogadores carregados`);
-        setLeaderboard(validData);
-      } catch (error) {
-        console.error("❌ Erro ao carregar leaderboard:", error);
-        setLeaderboard([]);
-      } finally {
-        setLeaderboardLoading(false);
-      }
-    };
-
-    loadLeaderboardData();
-    const interval = setInterval(loadLeaderboardData, 30000); // Atualiza a cada 30s
-
-    return () => clearInterval(interval);
-  }, [showLeaderboard]);
-
-  const handleCloudSave = async () => {
-    if (!currentUser) return;
-    setCloudStatus("saving");
-    const success = await saveGameToCloud(
-      currentUser,
-      gameState,
-      upgrades,
-      playerName,
-      highScore,
-      globalStats
-    );
-    setCloudStatus(success ? "saved" : "error");
-    setTimeout(() => setCloudStatus("idle"), 3000);
-  };
-
+  // Wrapper for Auth Action to handle UI state (tempName)
   const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthError("");
     const isRegistering = authMode === "register";
-
-    // Sanitize inputs
-    const cleanRegUser = regUser.trim();
-    const cleanRegEmail = regEmail.trim();
-    const cleanEmailOrUser = emailOrUser.trim();
-    const cleanPass = password.trim();
-
-    if (isRegistering) {
-      if (!cleanRegEmail || !cleanPass || !cleanRegUser) {
-        setAuthError("Preencha todos os campos.");
-        return;
-      }
-      if (cleanRegUser.length < 3) {
-        setAuthError("Nome de usuário muito curto.");
-        return;
-      }
-      if (cleanPass.length < 6) {
-        setAuthError("A senha deve ter no mínimo 6 caracteres.");
-        return;
-      }
-    } else {
-      if (!cleanEmailOrUser || !cleanPass) {
-        setAuthError("Preencha login e senha.");
-        return;
-      }
-    }
-
-    setIsSyncing(true);
-
+    
     try {
-      let user;
       if (isRegistering) {
-        user = await registerWithEmail(cleanRegEmail, cleanPass, cleanRegUser);
-        setTempName(cleanRegUser.toUpperCase());
+        await authHookAction("register", regUser, regEmail, password);
+        setTempName(regUser.toUpperCase());
       } else {
-        user = await loginWithEmailOrUsername(cleanEmailOrUser, cleanPass);
+        await authHookAction("login", emailOrUser, undefined, password);
       }
-
       setPassword("");
-
-      if (user) {
-        const data = await loadGameFromCloud(user);
-        if (data) {
-          applyCloudData(data);
-          setTempName(data.playerName);
-        } else {
-          if (!isRegistering) {
-            const derivedName =
-              user.displayName ||
-              user.email?.split("@")[0].toUpperCase() ||
-              cleanRegUser.toUpperCase();
-            if (derivedName) setTempName(derivedName);
-          }
-        }
-        setAuthMode("hidden");
-      }
-    } catch (error: any) {
-      console.error("Auth Error:", error);
-      let msg = "Erro desconhecido.";
-
-      const errCode = error.code || "";
-      const errMsg = error.message || "";
-
-      if (
-        errCode.includes("permission-denied") ||
-        errMsg.includes("Missing or insufficient permissions")
-      ) {
-        msg = "Erro de Segurança do Banco de Dados.";
-        setShowRulesModal(true);
-      } else if (errMsg === "USERNAME_TAKEN")
-        msg = "Este nome de usuário já está em uso.";
-      else if (errMsg === "USER_NOT_FOUND") msg = "Usuário não encontrado.";
-      else if (errMsg === "USER_LOOKUP_FAILED")
-        msg = "Falha ao buscar usuário. Tente com Email.";
-      else if (errCode === "auth/invalid-email") msg = "Email inválido.";
-      else if (errCode === "auth/user-not-found") msg = "Conta não encontrada.";
-      else if (
-        errCode === "auth/wrong-password" ||
-        errCode === "auth/invalid-credential"
-      )
-        msg = "Senha incorreta.";
-      else if (errCode === "auth/email-already-in-use")
-        msg = "Este email já possui conta.";
-      else if (errCode === "auth/weak-password")
-        msg = "Senha muito fraca (min 6 caracteres).";
-      else if (errCode === "auth/unauthorized-domain") {
-        msg = "Domínio não autorizado no Firebase.";
-        const currentDomain = window.location.hostname;
-        prompt(
-          "Copie este domínio e adicione no Firebase Authentication > Settings > Authorized Domains:",
-          currentDomain
-        );
-      }
-
-      setAuthError(msg);
-    } finally {
-      setIsSyncing(false);
+    } catch (err) {
+      // Error is handled in hook state authError
     }
-  };
-
-  // --- SMART MERGE: Compara local vs cloud e usa a versão mais recente ---
-  const smartMergeUpgrades = (cloudData: CloudSaveData): Upgrade[] => {
-    // Pega upgrades locais e timestamp
-    const localUpgradesJson = localStorage.getItem("neon_arena_upgrades");
-    const localTimestamp = localStorage.getItem(
-      "neon_arena_upgrades_timestamp"
-    );
-
-    if (!localUpgradesJson || !localTimestamp) {
-      // Sem dados locais, usa nuvem
-      console.log("📥 Nenhum upgrade local, usando nuvem");
-      return cloudData.upgrades || INITIAL_UPGRADES;
-    }
-
-    try {
-      const localUpgrades = JSON.parse(localUpgradesJson);
-      const localTime = parseInt(localTimestamp);
-
-      // Tenta extrair timestamp da nuvem (se disponível)
-      const cloudTime = cloudData.lastSaved?.toMillis?.() || 0;
-
-      if (localTime > cloudTime) {
-        // Local é mais recente, mantém local
-        console.log(
-          `🔄 Upgrade local é mais recente (${new Date(
-            localTime
-          ).toLocaleTimeString()}) vs nuvem (${new Date(
-            cloudTime
-          ).toLocaleTimeString()})`
-        );
-        return localUpgrades;
-      } else {
-        // Nuvem é mais recente ou igual, usa nuvem
-        console.log(`📥 Nuvem é mais recente ou não há dados locais`);
-        return cloudData.upgrades || INITIAL_UPGRADES;
-      }
-    } catch (e) {
-      console.error("❌ Erro ao fazer merge de upgrades:", e);
-      return cloudData.upgrades || INITIAL_UPGRADES;
-    }
-  };
-
-  // --- SMART MERGE: Skins (smart merge da skin selecionada)
-  const smartMergeSkin = (cloudData: CloudSaveData): string => {
-    // Pega skin local e timestamp
-    const localStateJson = localStorage.getItem("neon_arena_gamestate");
-    const localTimestamp = localStorage.getItem(
-      "neon_arena_gamestate_timestamp"
-    );
-
-    // Se há dados locais, SEMPRE usa local (user escolheu manualmente)
-    if (localStateJson) {
-      try {
-        const localState = JSON.parse(localStateJson);
-        const localSkin = localState.selectedSkinId || "default";
-
-        // Validação: skin local deve estar em ownedSkinIds (local ou nuvem)
-        const ownedSkinsLocal = localState.ownedSkinIds || ["default"];
-        const ownedSkinsCloud = cloudData.ownedSkinIds || ["default"];
-        const allOwnedSkins = [
-          ...new Set([...ownedSkinsLocal, ...ownedSkinsCloud]),
-        ];
-
-        if (allOwnedSkins.includes(localSkin)) {
-          console.log(`🎯 Skin local selecionada: ${localSkin}`);
-          return localSkin;
-        }
-      } catch (e) {
-        console.error("❌ Erro ao ler skin local:", e);
-      }
-    }
-
-    // Sem dados locais, usa nuvem como fallback
-    console.log("📥 Usando skin da nuvem");
-    return cloudData.selectedSkinId || "default";
-  };
-
-  const applyCloudData = (data: CloudSaveData) => {
-    if (!data) {
-      console.error("❌ Dados da nuvem inválidos");
-      return;
-    }
-
-    setPlayerName(data.playerName || "JOGADOR");
-    setTempName(data.playerName || "JOGADOR");
-    setHighScore(data.highScore || 0);
-
-    // Smart merge: usa a versão mais recente (local vs nuvem)
-    const mergedUpgrades = smartMergeUpgrades(data);
-    const mergedSkinId = smartMergeSkin(data);
-
-    // Sanitize upgrades: ensure crit_chn and crit_fac start at level 0 if not purchased
-    const sanitizedUpgrades = Array.isArray(mergedUpgrades)
-      ? mergedUpgrades.map((u) => {
-          // Reset crit_chn and crit_fac to level 0 to prevent over-leveling
-          if ((u.id === "crit_chn" || u.id === "crit_fac") && u.level > 0) {
-            return { ...u, level: 0 };
-          }
-          return u;
-        })
-      : INITIAL_UPGRADES;
-
-    setUpgrades(sanitizedUpgrades);
-    setGameState((prev) => ({
-      ...prev,
-      cash: data.cash || 150,
-      gems: data.gems || 0,
-      wave: data.wave || 1,
-      ownedSkinIds: Array.isArray(data.ownedSkinIds)
-        ? data.ownedSkinIds
-        : ["default"],
-      selectedSkinId: mergedSkinId,
-      lastLoginDate: data.lastLoginDate || "",
-      loginStreak: data.loginStreak || 0,
-    }));
-
-    // Load global stats if available
-    if (data.globalStats) {
-      setGlobalStats(data.globalStats);
-    }
-
-    setStats(calculateStats(sanitizedUpgrades));
   };
 
   const calculateStats = (
@@ -1004,16 +529,13 @@ const App: React.FC = () => {
         resetState as GameState,
         INITIAL_UPGRADES,
         playerName,
-        highScore
+        highScore,
+        globalStats
       );
     }
 
     // Play sound
     audioSystem.playUpgrade();
-  };
-
-  const handleLogout = async () => {
-    await logoutUser();
   };
 
   const togglePause = () => {
@@ -1048,7 +570,15 @@ const App: React.FC = () => {
             "neon_arena_highscore",
             gameState.score.toString()
           );
-          if (currentUser) handleCloudSave();
+          if (currentUser) {
+            handleCloudSave();
+            updateLeaderboard(
+              currentUser,
+              playerName,
+              gameState.score,
+              globalStats.prestigeLevel
+            );
+          }
         }
         animationFrameId = requestAnimationFrame(loop);
         return;

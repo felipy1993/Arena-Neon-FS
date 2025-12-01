@@ -6,7 +6,6 @@ import {
   loginWithEmailOrUsername,
   logoutUser,
   auth,
-  loadGameFromCloud,
 } from "../../firebase";
 
 /**
@@ -16,7 +15,6 @@ import {
  * - Listener de autenticação (onAuthStateChanged)
  * - Login com Google, Email, Username
  * - Logout
- * - Carregamento de dados da nuvem
  * - Estados de erro e loading
  */
 
@@ -56,10 +54,6 @@ export const useAuth = (): UseAuthReturn => {
       try {
         setCurrentUser(user);
         if (user) {
-          const cloudData = await loadGameFromCloud(user);
-          if (!cloudData) {
-            console.log("ℹ️ Novo usuário ou sem save");
-          }
           setAuthMode("hidden");
         } else {
           setAuthMode("login");
