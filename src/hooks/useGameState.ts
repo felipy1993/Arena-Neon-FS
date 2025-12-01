@@ -106,22 +106,34 @@ export const useGameState = (currentUser: User | null): UseGameStateReturn => {
   });
 
   const [gameState, setGameState] = useState<GameState>(() => {
+    // Try to restore score from localStorage first (persists across F5)
+    const savedCurrentScore = localStorage.getItem("neon_arena_current_score");
+    const currentScore = savedCurrentScore ? parseInt(savedCurrentScore) : 0;
+    
+    // Fallback to sessionStorage (legacy)
     const savedSessionScore = sessionStorage.getItem("neon_arena_session_score");
     const sessionScore = savedSessionScore ? parseInt(savedSessionScore) : 0;
 
     const savedState = localStorage.getItem("neon_arena_gamestate");
     const parsedState = savedState ? JSON.parse(savedState) : {};
 
+    // Try to restore gameplay state (if game was in progress during F5)
+    const savedGameplayState = localStorage.getItem("neon_arena_gameplay_state");
+    const gameplayState = savedGameplayState ? JSON.parse(savedGameplayState) : {};
+    
+    // If there's a saved gameplay state, it means game was in progress
+    const wasGameInProgress = !!savedGameplayState;
+
     return {
-      cash: parsedState.cash || 150,
+      cash: gameplayState.cash || parsedState.cash || 150,
       gems: parsedState.gems || 0,
-      wave: 1,
-      waveProgress: 0,
-      gameSpeed: 1,
-      isGameOver: false,
-      isPaused: false,
-      score: sessionScore,
-      isGameStarted: false,
+      wave: gameplayState.wave || 1,
+      waveProgress: gameplayState.waveProgress || 0,
+      gameSpeed: gameplayState.gameSpeed || 1,
+      isGameOver: gameplayState.isGameOver || false,
+      isPaused: gameplayState.isPaused || false,
+      score: currentScore || sessionScore,
+      isGameStarted: wasGameInProgress, // Auto-resume if game was in progress
       selectedSkinId: parsedState.selectedSkinId || "default",
       ownedSkinIds: parsedState.ownedSkinIds || ["default"],
       lastLoginDate: parsedState.lastLoginDate || "",
@@ -218,6 +230,7 @@ export const useGameState = (currentUser: User | null): UseGameStateReturn => {
 
   useEffect(() => {
     if (!gameState.isGameStarted) {
+      // Save permanent state when not in game
       const stateToSave = {
         cash: gameState.cash,
         gems: gameState.gems,
@@ -238,6 +251,39 @@ export const useGameState = (currentUser: User | null): UseGameStateReturn => {
     gameState.loginStreak,
     gameState.isGameStarted,
   ]);
+
+  // Save gameplay state during active game (for F5 recovery)
+  useEffect(() => {
+    if (gameState.isGameStarted) {
+      const gameplayState = {
+        cash: gameState.cash,
+        wave: gameState.wave,
+        waveProgress: gameState.waveProgress,
+        gameSpeed: gameState.gameSpeed,
+        isGameOver: gameState.isGameOver,
+        isPaused: gameState.isPaused,
+      };
+      localStorage.setItem("neon_arena_gameplay_state", JSON.stringify(gameplayState));
+    } else {
+      // Clear gameplay state when game ends
+      localStorage.removeItem("neon_arena_gameplay_state");
+    }
+  }, [
+    gameState.isGameStarted,
+    gameState.cash,
+    gameState.wave,
+    gameState.waveProgress,
+    gameState.gameSpeed,
+    gameState.isGameOver,
+    gameState.isPaused,
+  ]);
+
+  // Save score during gameplay to prevent loss on page reload
+  useEffect(() => {
+    if (gameState.isGameStarted && gameState.score > 0) {
+      localStorage.setItem("neon_arena_current_score", gameState.score.toString());
+    }
+  }, [gameState.score, gameState.isGameStarted]);
 
   // --- AUTO-SAVE CLOUD (Firebase) ---
   const handleCloudSave = async () => {

@@ -330,9 +330,9 @@ export const UPGRADE_LIMITS: Record<string, { min?: number; max?: number }> = {
   // Crit chance: percentage 0-100
   crit_chn: { min: 0, max: 50 },
   // Crit factor multiplier
-  crit_fac: { min: 1.0, max: 3.0 },
+  crit_fac: { min: 1.0, max: 6.0 },
   // Multi shot: cap to renderer visual cap
-  multi_shot: { min: 0, max: 12 },
+  multi_shot: { min: 0, max: 15 },
   // Regen per second
   regen: { min: 0, max: 50 },
   // Armor flat reduction

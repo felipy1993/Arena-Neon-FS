@@ -157,6 +157,21 @@ const App: React.FC = () => {
     }
   };
 
+  // Auto-resume initialization: set up wave enemy counters when game resumes after F5
+  useEffect(() => {
+    if (gameState.isGameStarted && gameState.wave > 0) {
+      // Check if counters need initialization (they'll be 0 on page load)
+      if (totalEnemiesThisWave === 0) {
+        const spawnInterval = Math.max(0.25, 1.8 - gameState.wave * 0.05);
+        const spawnCount = Math.floor(2 + gameState.wave / 3);
+        const totalSpawns = Math.floor(WAVE_DURATION / spawnInterval);
+        const totalEnemies = totalSpawns * spawnCount;
+        setTotalEnemiesThisWave(totalEnemies);
+        // Don't reset enemiesSpawnedThisWave as it should continue from where it was
+      }
+    }
+  }, [gameState.isGameStarted, gameState.wave, totalEnemiesThisWave]);
+
   const calculateStats = (
     currentUpgrades: Upgrade[],
     currentHp?: number,
@@ -457,8 +472,10 @@ const App: React.FC = () => {
 
   const returnToMainMenu = () => {
     if (currentUser) handleCloudSave();
-    // Clear session score when returning to main menu
+    // Clear session and gameplay state when returning to main menu
     sessionStorage.removeItem("neon_arena_session_score");
+    localStorage.removeItem("neon_arena_current_score");
+    localStorage.removeItem("neon_arena_gameplay_state");
     setGameState((prev) => ({
       ...prev,
       isGameStarted: false,
@@ -472,8 +489,10 @@ const App: React.FC = () => {
   };
 
   const resetGame = async () => {
-    // Clear session score when resetting
+    // Clear session and gameplay state when resetting
     sessionStorage.removeItem("neon_arena_session_score");
+    localStorage.removeItem("neon_arena_current_score");
+    localStorage.removeItem("neon_arena_gameplay_state");
 
     // Reset all game state to initial values
     const resetState = {
